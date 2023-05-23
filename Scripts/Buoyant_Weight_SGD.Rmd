@@ -1,0 +1,34 @@
+---
+title: "Buoyant_Weight_SGD"
+author: "Callie Stephenson"
+date: "2023-05-23"
+output: html_document
+---
+
+### Description
+This R Markdown file is meant to create a graph that evaluates the change in buoyant weight of corals from Callie's 2023 Moorea experiment against the SGD Gradient.
+
+Data for this project is accessed from GitHub [here](https://github.com/donahuem/MooreaCoralFish_CS/tree/main/Coral_Data)
+```{r}
+#add libraries
+library(gdata)
+library(reshape)
+library(tidyverse)
+library(ggplot2)
+
+# adding data
+Buoyant_weight_Pac <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Buoyant_Weight.csv")
+No_NA_Buoyant_weight_Pac <- Buoyant_weight_Pac%>%
+               drop_na(T1_Weight)
+
+BioGC.Info_raw <-read_csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Allbiogeochemdata_QC.csv")
+BioGC.Info <- BioGC.Info_raw %>%
+  filter(!Date == "2021-08-06") #filter out Varari high wave event
+BioGC.Info <- BioGC.Info %>%
+  filter(!Location == "Cabral") #filter out Cabral data
+```
+Now that the data is loaded, I have started making preliminary graphs
+```{r}
+
+```
+
