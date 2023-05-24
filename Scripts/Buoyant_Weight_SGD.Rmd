@@ -26,9 +26,37 @@ BioGC.Info <- BioGC.Info_raw %>%
   filter(!Date == "2021-08-06") #filter out Varari high wave event
 BioGC.Info <- BioGC.Info %>%
   filter(!Location == "Cabral") #filter out Cabral data
+BioGC.Info <- BioGC.Info %>%
+  filter(!Silicate_umolL == "NA") #filter out NA
+BioGC.Info <- BioGC.Info %>%
+  filter(!CowTagID == "Varari_Well") #filter out Varari_Well
+BioGC.Info_no_Seep <- BioGC.Info %>%
+  filter(!CowTagID == "VSEEP") #filter out Seep
 ```
 Now that the data is loaded, I have started making preliminary graphs
 ```{r}
-
+Silicate_Gradient <- ggplot(BioGC.Info, aes(
+  x=factor(CowTagID, level=c('VSEEP','V1', 'V2', 'V3','V4','V5','V6','V7','V8','V9','V10','V11','V12','V13','V14','V15','V16','V17','V18','V19','V20')), 
+  y =Silicate_umolL)) + geom_point (color="cyan4") + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+xlab('Location')+ylab('Silicate (umol/L)')+stat_summary(
+        geom = "point",
+        fun = "mean",
+        col = "darkolivegreen",
+        size = 2,
+        shape = 24,
+        fill = "darkolivegreen") +labs(title='Silicone Gradient with Seep')
+Silicate_Gradient
+```
+```{r}
+Silicate_Gradient_no_Seep <- ggplot(BioGC.Info_no_Seep, aes(
+  x=factor(CowTagID, level=c('V1','V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12','V13','V14','V15','V16','V17','V18','V19','V20')), 
+  y =Silicate_umolL)) + geom_point (aes(color=Tide)) + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+xlab('Location')+ylab('Silicate (umol/L)')+stat_summary(
+        geom = "point",
+        fun = "mean",
+        col = "darkolivegreen",
+        size = 2,
+        shape = 24,
+        show.legend = NA,
+        fill = "darkolivegreen") +labs(title='Silicone Gradient without Seep')
+Silicate_Gradient_no_Seep
 ```
 
