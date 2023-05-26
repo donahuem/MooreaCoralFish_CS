@@ -86,43 +86,79 @@ Mean_Silicate$Varari_Pin<- as.numeric(gsub("V","",Mean_Silicate$CowTagID))
 Mean_Silicate =Mean_Silicate[order(Mean_Silicate$Mean),]
 View(Mean_Silicate)
 ```
-
-If I rewrite the code above and plot this data frame instead of using stats_summary:
-
+Now I try to graph it
 ```{r}
-Silicate_Gradient_no_Seep_new <- ggplot()+
+Silicate_Mean<- ggplot()+
+  geom_line(data=Mean_Silicate, aes(
+    x=reorder(Varari_Pin,Mean_Silicate$Mean), 
+    y=Mean,
+    group=1))+
   geom_point(data=Mean_Silicate, aes(
     x=reorder(Varari_Pin,Mean_Silicate$Mean), 
-    y=Mean, 
-    color="Mean"))+
-  geom_point(data=BioGC.Info_no_Seep, aes(
+    y=Mean))+
+  xlab('Location')
+```
+```{r}
+Silicate_Mean
+```
+
+Expanding on this plot to include the original data points
+```{r}
+Silicate_Mean_with_all_values <- Silicate_Mean +geom_point(data=BioGC.Info_no_Seep, aes(
     x=Varari_Pin, 
     y=Silicate_umolL, 
     color=Tide)) +
   scale_color_manual(values = c("steelblue", "lightskyblue","black"))+
   labs(title='Silicate Gradient without Seep')+
   xlab('Location')+
-  ylab('Silicate (umol/L)')#+ 
-  #scale_x_continuous(n.breaks=20)
-Silicate_Gradient_no_Seep_new
+  ylab('Silicate (umol/L)')
+```
+```{r}
+Silicate_Mean_with_all_values
+
 ```
 Now, to compare this gradient to the change in buoyant weight
 ```{r}
 Buoyant_Weight_on_Gradient <- ggplot()+
+  geom_line(data=Mean_Silicate, aes(
+    x=reorder(Varari_Pin,Mean_Silicate$Mean), 
+    y=Mean,
+    group=1,
+    color="Mean"))+
   geom_point(data=Mean_Silicate, aes(
     x=reorder(Varari_Pin,Mean_Silicate$Mean), 
-    y=Mean, 
-    color="Mean of Silicate (umol/L)"))+
+    y=Mean,
+    color="Mean"))+
+  geom_line(data=Merged_Coral_Data, aes(
+    x=Pin_Number,
+    y=X._Change_100/6,
+    color =Cage_Uncaged))+
+  geom_point(data=Merged_Coral_Data, aes(
+    x=Pin_Number,
+    y=X._Change_100/6,
+    color =Cage_Uncaged))+
+  scale_y_continuous(name="Mean Silicate Concentration (umol/L)",
+                       sec.axis = sec_axis(~.*6, name = "Change in Buoyant Weight"))+
+  xlab('Varari Pin')+
+  ylab('Silicate Concentration')+
+  labs(title='Percent change in Buoyant Weight Relative to Mean Silicate Concentration')+
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07","black"),name="", labels = c("Uncaged", "Partially Caged", "Fully Caged","Mean Silicate Concentration"))
+
+Buoyant_Weight_on_Gradient
+```
+Code for just a buoyant weight graph. I cannot figure out how to order the graph for the silicate concentration without plotting both on the same graph, which limits the axis
+```{r}
+PAC_Buoyant_Weight <- ggplot()+
   geom_point(data=Merged_Coral_Data, aes(
     x=Pin_Number,
     y=X._Change_100,
-    color =Cage_Uncaged
-  ))+
+    color =Cage_Uncaged))+
+  scale_y_continuous(name="Silicate Concentration",
+                       sec.axis = sec_axis(trans=~.*10, name = "Change in Buoyant Weight"))+
   xlab('Varari Pin')+
   ylab('Silicate Concentration')+
   labs(title='Percent change in Buoyant Weight Relative to Silicate Concentration')+
-  scale_color_discrete(name = "Dose", labels = c("Uncaged", "Partially Caged", "Fully Caged","Mean Silicate Concentration"))
-  #theme(legend.title = element_blank())
-Buoyant_Weight_on_Gradient
+  scale_color_discrete(name = "", labels = c("Uncaged", "Partially Caged", "Fully Caged","Mean Silicate Concentration"))
+PAC_Buoyant_Weight
 ```
 
