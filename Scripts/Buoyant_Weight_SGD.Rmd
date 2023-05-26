@@ -10,17 +10,25 @@ This R Markdown file is meant to create a graph that evaluates the change in buo
 
 Data for this project is accessed from GitHub [here](https://github.com/donahuem/MooreaCoralFish_CS/tree/main/Coral_Data)
 ```{r}
+#if needed, install tidyverse by removing the # in the line below:
+#install.packages("tidyverse")
+
 #add libraries
 library(gdata)
 library(reshape)
 library(tidyverse)
 library(ggplot2)
 
-# adding data
+# adding Coral data
+Coral_Dict <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Coral_Codes.csv")
+
 Buoyant_weight_Pac <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Buoyant_Weight.csv")
 No_NA_Buoyant_weight_Pac <- Buoyant_weight_Pac%>%
                drop_na(T1_Weight)
 
+Merged_Coral_Data <- merge(Coral_Dict, No_NA_Buoyant_weight_Pac, by = "Vial_No_Only", all.x=FALSE, all.y = TRUE)
+
+# adding Gradient data
 BioGC.Info_raw <-read_csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Allbiogeochemdata_QC.csv")
 BioGC.Info <- BioGC.Info_raw %>%
   filter(!Date == "2021-08-06") #filter out Varari high wave event
@@ -32,6 +40,8 @@ BioGC.Info <- BioGC.Info %>%
   filter(!CowTagID == "Varari_Well") #filter out Varari_Well
 BioGC.Info_no_Seep <- BioGC.Info %>%
   filter(!CowTagID == "VSEEP") #filter out Seep
+BioGC.Info_no_Seep$Varari_Pin <-as.numeric(gsub("V","",BioGC.Info_no_Seep$CowTagID)) #adds column 'Varari_Pin' that removes the V in CowTagID so that pin placements are numbers not characters
+
 ```
 Now that the data is loaded, I have started making preliminary graphs
 ```{r}
@@ -43,20 +53,76 @@ Silicate_Gradient <- ggplot(BioGC.Info, aes(
         col = "darkolivegreen",
         size = 2,
         shape = 24,
-        fill = "darkolivegreen") +labs(title='Silicone Gradient with Seep')
+        fill = "darkolivegreen") +labs(title='Silicate Gradient with Seep')
 Silicate_Gradient
 ```
+
 ```{r}
 Silicate_Gradient_no_Seep <- ggplot(BioGC.Info_no_Seep, aes(
-  x=factor(CowTagID, level=c('V1','V2','V3','V4','V5','V6','V7','V8','V9','V10','V11','V12','V13','V14','V15','V16','V17','V18','V19','V20')), 
-  y =Silicate_umolL)) + geom_point (aes(color=Tide)) + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))+xlab('Location')+ylab('Silicate (umol/L)')+stat_summary(
+  x=Varari_Pin, 
+  y =Silicate_umolL)) + 
+  geom_point (aes(color=Tide)) +
+  labs(title='Silicate Gradient without Seep') +
+  xlab('Location')+
+  ylab('Silicate (umol/L)')+ 
+  scale_x_continuous(n.breaks=20)+
+  scale_color_manual(values = c("steelblue", "lightskyblue"))+
+  stat_summary(
         geom = "point",
         fun = "mean",
-        col = "darkolivegreen",
+        fill = "darkolivegreen",
         size = 2,
-        shape = 24,
         show.legend = NA,
-        fill = "darkolivegreen") +labs(title='Silicone Gradient without Seep')
-Silicate_Gradient_no_Seep
+        aes(shape="mean")) +scale_shape_manual("", values=c("mean"="x")) 
+  
+Silicate_Gradient_no_Seep 
+```
+Now that we have an understanding of what the gradient looks like, it is time to compare that to our change in buoyant weight
+
+This code creates a Data Frame with the mean values displayed above
+```{r}
+Mean_Silicate <- setNames(aggregate(BioGC.Info_no_Seep$Silicate_umolL, list(BioGC.Info_no_Seep$CowTagID), FUN=mean),c("CowTagID","Mean"))
+Mean_Silicate$Varari_Pin<- as.numeric(gsub("V","",Mean_Silicate$CowTagID))
+Mean_Silicate =Mean_Silicate[order(Mean_Silicate$Mean),]
+View(Mean_Silicate)
+```
+
+If I rewrite the code above and plot this data frame instead of using stats_summary:
+
+```{r}
+Silicate_Gradient_no_Seep_new <- ggplot()+
+  geom_point(data=Mean_Silicate, aes(
+    x=reorder(Varari_Pin,Mean_Silicate$Mean), 
+    y=Mean, 
+    color="Mean"))+
+  geom_point(data=BioGC.Info_no_Seep, aes(
+    x=Varari_Pin, 
+    y=Silicate_umolL, 
+    color=Tide)) +
+  scale_color_manual(values = c("steelblue", "lightskyblue","black"))+
+  labs(title='Silicate Gradient without Seep')+
+  xlab('Location')+
+  ylab('Silicate (umol/L)')#+ 
+  #scale_x_continuous(n.breaks=20)
+Silicate_Gradient_no_Seep_new
+```
+Now, to compare this gradient to the change in buoyant weight
+```{r}
+Buoyant_Weight_on_Gradient <- ggplot()+
+  geom_point(data=Mean_Silicate, aes(
+    x=reorder(Varari_Pin,Mean_Silicate$Mean), 
+    y=Mean, 
+    color="Mean of Silicate (umol/L)"))+
+  geom_point(data=Merged_Coral_Data, aes(
+    x=Pin_Number,
+    y=X._Change_100,
+    color =Cage_Uncaged
+  ))+
+  xlab('Varari Pin')+
+  ylab('Silicate Concentration')+
+  labs(title='Percent change in Buoyant Weight Relative to Silicate Concentration')+
+  scale_color_discrete(name = "Dose", labels = c("Uncaged", "Partially Caged", "Fully Caged","Mean Silicate Concentration"))
+  #theme(legend.title = element_blank())
+Buoyant_Weight_on_Gradient
 ```
 
