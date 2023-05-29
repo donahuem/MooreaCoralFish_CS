@@ -43,7 +43,7 @@ BioGC.Info_no_Seep <- BioGC.Info %>%
 BioGC.Info_no_Seep$Varari_Pin <-as.numeric(gsub("V","",BioGC.Info_no_Seep$CowTagID)) #adds column 'Varari_Pin' that removes the V in CowTagID so that pin placements are numbers not characters
 
 ```
-Now that the data is loaded, I have started making preliminary graphs
+Now that the data is loaded, this code displays the values for silicate along the gradient by tide.
 ```{r}
 Silicate_Gradient <- ggplot(BioGC.Info, aes(
   x=factor(CowTagID, level=c('VSEEP','V1', 'V2', 'V3','V4','V5','V6','V7','V8','V9','V10','V11','V12','V13','V14','V15','V16','V17','V18','V19','V20')), 
@@ -56,7 +56,7 @@ Silicate_Gradient <- ggplot(BioGC.Info, aes(
         fill = "darkolivegreen") +labs(title='Silicate Gradient with Seep')
 Silicate_Gradient
 ```
-
+Since the seep is so much higher than the other values, and the seep was not used in this experiment, I graphed this data without the seep included:
 ```{r}
 Silicate_Gradient_no_Seep <- ggplot(BioGC.Info_no_Seep, aes(
   x=Varari_Pin, 
@@ -86,7 +86,7 @@ Mean_Silicate$Varari_Pin<- as.numeric(gsub("V","",Mean_Silicate$CowTagID))
 Mean_Silicate =Mean_Silicate[order(Mean_Silicate$Mean),]
 View(Mean_Silicate)
 ```
-Now I try to graph it
+Now I graph just the mean values and change the orientation on the x-axis to lowest to highest value
 ```{r}
 Silicate_Mean<- ggplot()+
   geom_line(data=Mean_Silicate, aes(
@@ -101,8 +101,27 @@ Silicate_Mean<- ggplot()+
 ```{r}
 Silicate_Mean
 ```
+This code does the same thing, but for the Maximum Silicate Values
+```{r}
+Max_Silicate <- setNames(aggregate(BioGC.Info_no_Seep$Silicate_umolL, list(BioGC.Info_no_Seep$CowTagID), FUN=max),c("CowTagID","Maximum_Silicate"))
+Max_Silicate$Varari_Pin <- as.numeric(gsub("V","",Max_Silicate$CowTagID))
+Max_Silicate =Max_Silicate[order(Max_Silicate$Max),]
+View(Max_Silicate)
+```
+```{r}
+Silicate_Max<- ggplot()+
+  geom_line(data=Max_Silicate, aes(
+    x=reorder(Varari_Pin,Max_Silicate$Max), 
+    y=Max_Silicate$Maximum_Silicate,
+    group=1))+
+  geom_point(data=Max_Silicate, aes(
+    x=reorder(Varari_Pin,Max_Silicate$Maximum_Silicate), 
+    y=Max_Silicate$Maximum_Silicate))+
+  xlab('Location')
+Silicate_Max
+```
 
-Expanding on this plot to include the original data points
+Plotting the Seep values to include the trend line for Mean Values above:
 ```{r}
 Silicate_Mean_with_all_values <- Silicate_Mean +geom_point(data=BioGC.Info_no_Seep, aes(
     x=Varari_Pin, 
@@ -117,9 +136,9 @@ Silicate_Mean_with_all_values <- Silicate_Mean +geom_point(data=BioGC.Info_no_Se
 Silicate_Mean_with_all_values
 
 ```
-Now, to compare this gradient to the change in buoyant weight
+Now, to compare the mean gradient to the change in buoyant weight
 ```{r}
-Buoyant_Weight_on_Gradient <- ggplot()+
+Buoyant_Weight_on_Mean_Silicate_Gradient <- ggplot()+
   geom_line(data=Mean_Silicate, aes(
     x=reorder(Varari_Pin,Mean_Silicate$Mean), 
     y=Mean,
@@ -144,8 +163,41 @@ Buoyant_Weight_on_Gradient <- ggplot()+
   labs(title='Percent change in Buoyant Weight Relative to Mean Silicate Concentration')+
   scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07","black"),name="", labels = c("Uncaged", "Partially Caged", "Fully Caged","Mean Silicate Concentration"))
 
-Buoyant_Weight_on_Gradient
+Buoyant_Weight_on_Mean_Silicate_Gradient
 ```
+And, to compare the maximum values to the change in buoyant weight
+```{r}
+scale = 2.5
+Buoyant_Weight_on_Max_Silicate_Gradient <- ggplot()+
+  geom_line(data=Max_Silicate, aes(
+    x=reorder(Varari_Pin,Max_Silicate$Max), 
+    y=Max_Silicate$Maximum_Silicate,
+    group=1))+
+  geom_point(data=Max_Silicate, aes(
+    x=reorder(Varari_Pin,Max_Silicate$Maximum_Silicate), 
+    y=Max_Silicate$Maximum_Silicate))+
+  xlab('Location') +
+  geom_line(data=Merged_Coral_Data, aes(
+    x=Pin_Number,
+    y=X._Change_100/scale,
+    color =Cage_Uncaged))+
+  geom_point(data=Merged_Coral_Data, aes(
+    x=Pin_Number,
+    y=X._Change_100/scale,
+    color =Cage_Uncaged))+
+  scale_y_continuous(name="Mean Silicate Concentration (umol/L)",
+                       sec.axis = sec_axis(~.*scale, name = "Change in Buoyant Weight"))+
+  xlab('Varari Pin')+
+  ylab('Silicate Concentration')+
+  labs(title='Percent change in Buoyant Weight Relative to Maximum Silicate Concentration')+
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07","black"),name="", labels = c("Uncaged", "Partially Caged", "Fully Caged","Maximum Silicate Concentration"))
+
+Buoyant_Weight_on_Max_Silicate_Gradient
+```
+
+
+
+
 Code for just a buoyant weight graph. I cannot figure out how to order the graph for the silicate concentration without plotting both on the same graph, which limits the axis
 ```{r}
 PAC_Buoyant_Weight <- ggplot()+
