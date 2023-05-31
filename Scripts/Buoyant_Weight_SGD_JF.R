@@ -1,4 +1,7 @@
+library(tidyverse)
 rm(list=ls())
+
+
 Buoyant_weight_Pac <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Buoyant_Weight.csv")
 library(tidyverse)
 No_NA_Buoyant_weight_Pac <- Buoyant_weight_Pac%>%
@@ -46,20 +49,52 @@ Silicate_min=unlist(lapply(c(1:20),function(x){min(bio$Silicate_umolL[bio$Varari
 NN_mean=unlist(lapply(c(1:20),function(x){mean(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 NN_max=unlist(lapply(c(1:20),function(x){max(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 NN_min=unlist(lapply(c(1:20),function(x){min(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
-bwChangeA=unlist(lapply(c(1:20),function(x){bw$X._Change[bw$pin==x & bw$ABC=="A"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
+bwChangeA=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="A"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
 bwChangeA=c(NA,bwChangeA) #Because it was just the first pin, we can do this. If we had losses elsewhere .... look at stacks overflow
-bwChangeB=unlist(lapply(c(1:20),function(x){bw$X._Change[bw$pin==x & bw$ABC=="B"]})) 
+bwChangeB=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="B"]})) 
 bwChangeB=c(NA,bwChangeB) 
-bwChangeC=unlist(lapply(c(1:20),function(x){bw$X._Change[bw$pin==x & bw$ABC=="C"]})) 
+bwChangeC=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="C"]})) 
 Gtype=unlist(lapply(c(1:20),function(x){Coral_Dict$Genotype[Coral_Dict$Pin_Number==x][1]}))
+bw_sa_ChangeA=unlist(lapply(c(1:20),function(x){bw$Change_Over_Area[bw$pin==x & bw$ABC=="A"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
+bw_sa_ChangeA=c(NA,bw_sa_ChangeA) #Because it was just the first pin, we can do this. If we had losses elsewhere .... look at stacks overflow
+bw_sa_ChangeB=unlist(lapply(c(1:20),function(x){bw$Change_Over_Area[bw$pin==x & bw$ABC=="B"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
+bw_sa_ChangeB=c(NA,bw_sa_ChangeB) #Because it was just the first pin, we can do this. If we had losses elsewhere .... look at stacks overflow
+bw_sa_ChangeC=unlist(lapply(c(1:20),function(x){bw$Change_Over_Area[bw$pin==x & bw$ABC=="C"]}))
 
 
-df=data.frame(pin=pin,lat=lat,lon=long,sal_mean=sal_mean,sal_min=sal_min,sal_max=sal_max,Phos_mean=Phos_mean,Phos_max=Phos_max,Phos_min=Phos_min,Silicate_mean=Silicate_mean,Silicate_max=Silicate_max,Silicate_min=Silicate_min,NN_mean=NN_mean,NN_max=NN_max,NN_min=NN_min,bwChangeA=bwChangeA,bwChangeB=bwChangeB,bwChangeC=bwChangeC,Gtype=Gtype)
+df=data.frame(pin=pin,
+              lat=lat,
+              lon=long,
+              sal_mean=sal_mean,
+              sal_min=sal_min,
+              sal_max=sal_max,
+              Phos_mean=Phos_mean,
+              Phos_max=Phos_max,
+              Phos_min=Phos_min,
+              Silicate_mean=Silicate_mean,
+              Silicate_max=Silicate_max,
+              Silicate_min=Silicate_min,
+              NN_mean=NN_mean,
+              NN_max=NN_max,
+              NN_min=NN_min,
+              bwChangeA=bwChangeA,
+              bwChangeB=bwChangeB,
+              bwChangeC=bwChangeC,
+              bw_sa_ChangeA=bw_sa_ChangeA,
+              bw_sa_ChangeB=bw_sa_ChangeB,
+              bw_sa_ChangeC=bw_sa_ChangeC,
+              Gtype=Gtype)
 
 #makin some preliminary plotz about salinity
 plot(df$sal_mean,df$bwChangeC)
+plot(df$bwChangeC~df$sal_mean,pch=20,col=as.factor(df$Gtype))
+plot(df$bw_sa_ChangeC~df$sal_mean,pch=20,col=as.factor(df$Gtype))
+plot(df$bw_sa_ChangeB~df$sal_mean,pch=20,col=as.factor(df$Gtype))
+plot(df$bw_sa_ChangeA~df$sal_mean,pch=20,col=as.factor(df$Gtype))
+
 plot(df$sal_max,df$bwChangeC)
 plot(df$bwChangeC~df$sal_max,pch=20,col=as.factor(df$Gtype))
+plot(df$bw_sa_ChangeC~df$sal_max,pch=20,col=as.factor(df$Gtype))
 
 plot(df$sal_min,df$bwChangeC)
 
