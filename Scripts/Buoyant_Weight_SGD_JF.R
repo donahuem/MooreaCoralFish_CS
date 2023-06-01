@@ -116,8 +116,6 @@ plot(df$bw_sa_ChangeC~df$sal_mean,pch=20,col=as.factor(df$Gtype))
 plot(df$bw_sa_ChangeB~df$sal_mean,pch=20,col=as.factor(df$Gtype))
 plot(df$bw_sa_ChangeA~df$sal_mean,pch=20,col=as.factor(df$Gtype))
 
-Salinity_Mean_Plot <- ggplot(df, aes())
-
 plot(df$sal_max,df$bwChangeC)
 plot(df$bwChangeC~df$sal_max,pch=20,col=as.factor(df$Gtype))
 plot(df$bw_sa_ChangeC~df$sal_max,pch=20,col=as.factor(df$Gtype))
@@ -159,11 +157,25 @@ library(MuMIn)
 a=dredge(fit)
 
 
-plot(df$bwChangeC~df$sal_mean,xlab='Salinity',pch=20)
-lm1=lm(df$bwChangeC~df$sal_mean)
+plot(df$bw_sa_ChangeC~df$sal_mean,xlab='Mean Salinity', ylab='Change in Buoyant Weight Divided by Surface Area',pch=20)
+lm1=lm(df$bw_sa_ChangeC~df$sal_mean)
 summary(lm1)
 abline(a=lm1,col='red')
 
+Salinity_Max_Plot<- ggplot(df, aes(
+  y=bw_sa_ChangeC, 
+  x=sal_max, 
+  color=Gtype)) +
+  geom_point()+
+  xlab('Maximum Salinity')+
+  ylab('Change in Buoyant Weight')+
+  labs(title='Change in Buoyant Weight Across Maximum Salinity Gradient')
+Salinity_Max_Plot
+
+plot(df$bw_sa_ChangeC~df$sal_max,xlab='Mean Salinity', ylab='Change in Buoyant Weight Divided by Surface Area',pch=20)
+lm1=lm(df$bw_sa_ChangeC~df$sal_max)
+summary(lm1)
+abline(a=lm1,col='red')
 
 
 plot(df$bwChangeC~df$Phos_mean,pch=20)
