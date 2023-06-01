@@ -1,6 +1,7 @@
 rm(list=ls())
 library(tidyverse)
 library(ggplot2)
+library(ggpmisc)
 
 #First we input coral data
 Buoyant_weight_Pac <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Buoyant_Weight.csv")
@@ -109,6 +110,37 @@ df=data.frame(pin=pin,
               bw_sa_ChangeC=bw_sa_ChangeC,
               Gtype=Gtype)
 
+
+Salinity_Max_Plot <-ggplot(df, aes(
+  y=bw_sa_ChangeC, 
+  x=sal_max)) +
+  stat_poly_line(se=FALSE) +
+  stat_poly_eq(use_label(c("eq", "adj.R2")),label.x=0.9)+
+  stat_poly_eq(use_label(c("p")),label.x=0.9,label.y = 0.88)+
+  geom_point(aes(color=Gtype))+
+  labs(title='Coral Growth along Varari Submarine Groundwater Discharge Gradient',
+       x='Maximum Salinity',
+       y='Change in Buoyant Weight over Surface Area',
+       color='Genotype')+
+  theme(plot.title = element_text(hjust = 0.5))
+Salinity_Max_Plot
+
+Salinity_Max_Plot_All <- ggplot(df,aes(x=sal_max))+
+  geom_point(aes(y=bw_sa_ChangeA, color='Uncaged'))+
+  geom_point(aes(y=bw_sa_ChangeB, color='Partialy Caged'))+
+  geom_point(aes(y=bw_sa_ChangeC, color='Caged'))+
+  scale_color_manual(values=c('darkorchid4','cyan4','darkgoldenrod'))+
+  labs(title='Coral Growth along Varari Submarine Groundwater Discharge Gradient',
+       x='Maximum Salinity',
+       y='Change in Buoyant Weight over Surface Area',
+       color='Genotype')+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeA), size=.5, colour="darkorchid4",se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeB), size=.5, colour='cyan4', se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeC), size=.5, colour='darkgoldenrod',se=FALSE, formula=y~x)+
+  theme(plot.title = element_text(hjust = 0.5))
+Salinity_Max_Plot_All
+
+#BaseR Plots that I used to figure out what plots might work best.
 #makin some preliminary plotz about salinity
 plot(df$sal_mean,df$bwChangeC)
 plot(df$bwChangeC~df$sal_mean,pch=20,col=as.factor(df$Gtype))
@@ -162,15 +194,6 @@ lm1=lm(df$bw_sa_ChangeC~df$sal_mean)
 summary(lm1)
 abline(a=lm1,col='red')
 
-Salinity_Max_Plot<- ggplot(df, aes(
-  y=bw_sa_ChangeC, 
-  x=sal_max, 
-  color=Gtype)) +
-  geom_point()+
-  xlab('Maximum Salinity')+
-  ylab('Change in Buoyant Weight')+
-  labs(title='Change in Buoyant Weight Across Maximum Salinity Gradient')
-Salinity_Max_Plot
 
 plot(df$bw_sa_ChangeC~df$sal_max,xlab='Mean Salinity', ylab='Change in Buoyant Weight Divided by Surface Area',pch=20)
 lm1=lm(df$bw_sa_ChangeC~df$sal_max)
