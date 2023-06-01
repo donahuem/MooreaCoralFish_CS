@@ -1,11 +1,14 @@
 library(tidyverse)
 rm(list=ls())
 
-
+#First we input coral data
 Buoyant_weight_Pac <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Buoyant_Weight.csv")
 library(tidyverse)
+#Now we clean it up
 No_NA_Buoyant_weight_Pac <- Buoyant_weight_Pac%>%
-  drop_na(T1_Weight)
+  drop_na(T1_Weight) #Remove NA in PAC V01 A and B
+
+#Now we input biogeochem data
 BioGC.Info_raw <-read_csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Allbiogeochemdata_QC.csv")
 BioGC.Info <- BioGC.Info_raw %>%
   filter(!Date == "2021-08-06") #filter out Varari high wave event
@@ -19,9 +22,14 @@ BioGC.Info_no_Seep <- BioGC.Info %>%
   filter(!CowTagID == "VSEEP") #filter out Seep
 BioGC.Info_no_Seep$Varari_Pin <-as.numeric(gsub("V","",BioGC.Info_no_Seep$CowTagID)) #adds column 'Varari_Pin' that removes the V in CowTagID so that pin placements are numbers not characters
 
+#Insert the coral dictionary
 Coral_Dict <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Coral_Codes.csv")
 Coral_Dict=Coral_Dict[-which(is.na(Coral_Dict$Pin_Number)),]
 
+#And import flow data for clod cards
+Clod <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/Clod_Cards.csv")
+
+#Rename the files something easier - also makes the code a little easier to copy for PRU
 bio=BioGC.Info_no_Seep
 bw=No_NA_Buoyant_weight_Pac
 bw$pin=as.numeric(substr(bw$Placement_Code,6,7))
@@ -49,6 +57,7 @@ Silicate_min=unlist(lapply(c(1:20),function(x){min(bio$Silicate_umolL[bio$Varari
 NN_mean=unlist(lapply(c(1:20),function(x){mean(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 NN_max=unlist(lapply(c(1:20),function(x){max(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 NN_min=unlist(lapply(c(1:20),function(x){min(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
+Flow=unlist(lapply(c(1:20),function(x){Clod$X._loss[Clod$PIN==x]}))
 bwChangeA=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="A"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
 bwChangeA=c(NA,bwChangeA) #Because it was just the first pin, we can do this. If we had losses elsewhere .... look at stacks overflow
 bwChangeB=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="B"]})) 
@@ -77,6 +86,7 @@ df=data.frame(pin=pin,
               NN_mean=NN_mean,
               NN_max=NN_max,
               NN_min=NN_min,
+              Flow=Flow,
               bwChangeA=bwChangeA,
               bwChangeB=bwChangeB,
               bwChangeC=bwChangeC,
@@ -99,14 +109,20 @@ plot(df$bw_sa_ChangeC~df$sal_max,pch=20,col=as.factor(df$Gtype))
 plot(df$sal_min,df$bwChangeC)
 
 #makin some preliminary plotz about Silicate
-plot(df$pin,df$Silicate_mean)
-plot(df$pin,df$Silicate_max)
-plot(df$pin,df$Silicate_min)
+plot(df$bwChangeC~df$Silicate_mean,pch=20)
+plot(df$bwChangeC~df$Silicate_max,pch=20)
+plot(df$bwChangeC~df$Silicate_min,pch=20)
 
 #makin some preliminary plotz about Phosphate
-plot(df$pin,df$Phos_mean)
-plot(df$pin,df$Phos_max)
-plot(df$pin,df$Phos_min)
+plot(df$bwChangeC~df$Phos_mean,pch=20)
+plot(df$bwChangeC~df$Phos_max,pch=20)
+plot(df$bwChangeC~df$Phos_min,pch=20)
+
+#and checking for flow
+plot(df$bw_sa_ChangeC,df$Flow, pch=20,col=as.factor(df$Gtype))
+lm5=lm(df$bwChangeC~df$Flow)
+summary(lm5)
+abline(a=lm5,col='red')
 
 #did you know r could make a map!
 plot(df$lat~df$lon,asp=1)
