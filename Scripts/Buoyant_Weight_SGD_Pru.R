@@ -121,6 +121,12 @@ plot(df$NN_max,df$bw_sa_ChangeC, pch=20)
 
 #Plot about Flow
 plot(df$Flow,df$bw_sa_ChangeC, pch=20)
+lm_Flow=lm(df$bw_sa_ChangeC~df$NC_T)
+summary(lm_Flow)
+abline(a=lm_Flow,col='red')
 
 #Plot for NC_Turb
 plot(df$NC_T,df$bw_sa_ChangeC, pch=20)
+lm_Turb=lm(df$bw_sa_ChangeC~df$NC_T)
+summary(lm_Turb)
+abline(a=lm_Turb,col='red')
