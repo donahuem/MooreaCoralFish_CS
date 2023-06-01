@@ -1,9 +1,10 @@
-library(tidyverse)
 rm(list=ls())
+library(tidyverse)
+library(ggplot2)
 
 #First we input coral data
 Buoyant_weight_Pac <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PAC_Buoyant_Weight.csv")
-library(tidyverse)
+
 #Now we clean it up
 No_NA_Buoyant_weight_Pac <- Buoyant_weight_Pac%>%
   drop_na(T1_Weight) #Remove NA in PAC V01 A and B
@@ -28,6 +29,17 @@ Coral_Dict=Coral_Dict[-which(is.na(Coral_Dict$Pin_Number)),]
 
 #And import flow data for clod cards
 Clod <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/Clod_Cards.csv")
+
+#Import data for NC in Turbinaria
+NC_Turb <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Nutrients/Turb_NC.csv")
+NC_Turb <- NC_Turb %>%
+  filter(!CowTagID=="CSEEP") #take away the seep at cabral
+NC_Turb <- NC_Turb %>%
+  filter(!CowTagID=="VSEEP")#take away the seep at varari
+NC_Turb <- NC_Turb %>%
+  filter(!CowTagID %in% sprintf("C%d", 1:20)) #take away rest of cabral
+NC_Turb$Varari_Pin <-as.numeric(gsub("V","",NC_Turb$CowTagID))
+
 
 #Rename the files something easier - also makes the code a little easier to copy for PRU
 bio=BioGC.Info_no_Seep
@@ -58,6 +70,7 @@ NN_mean=unlist(lapply(c(1:20),function(x){mean(bio$NN_umolL[bio$Varari_Pin==x & 
 NN_max=unlist(lapply(c(1:20),function(x){max(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 NN_min=unlist(lapply(c(1:20),function(x){min(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 Flow=unlist(lapply(c(1:20),function(x){Clod$X._loss[Clod$PIN==x]}))
+NC_T=unlist(lapply(c(1:20),function(x){NC_Turb$C_N[NC_Turb$Varari_Pin==x]}))
 bwChangeA=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="A"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
 bwChangeA=c(NA,bwChangeA) #Because it was just the first pin, we can do this. If we had losses elsewhere .... look at stacks overflow
 bwChangeB=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="B"]})) 
@@ -87,6 +100,7 @@ df=data.frame(pin=pin,
               NN_max=NN_max,
               NN_min=NN_min,
               Flow=Flow,
+              NC_T=NC_T,
               bwChangeA=bwChangeA,
               bwChangeB=bwChangeB,
               bwChangeC=bwChangeC,
@@ -101,6 +115,8 @@ plot(df$bwChangeC~df$sal_mean,pch=20,col=as.factor(df$Gtype))
 plot(df$bw_sa_ChangeC~df$sal_mean,pch=20,col=as.factor(df$Gtype))
 plot(df$bw_sa_ChangeB~df$sal_mean,pch=20,col=as.factor(df$Gtype))
 plot(df$bw_sa_ChangeA~df$sal_mean,pch=20,col=as.factor(df$Gtype))
+
+Salinity_Mean_Plot <- ggplot(df, aes())
 
 plot(df$sal_max,df$bwChangeC)
 plot(df$bwChangeC~df$sal_max,pch=20,col=as.factor(df$Gtype))
@@ -123,6 +139,12 @@ plot(df$bw_sa_ChangeC,df$Flow, pch=20,col=as.factor(df$Gtype))
 lm5=lm(df$bwChangeC~df$Flow)
 summary(lm5)
 abline(a=lm5,col='red')
+
+#NC_Turb plot
+plot(df$bw_sa_ChangeC~df$NC_T, pch=20)
+lm6=lm(df$bw_sa_ChangeC~df$NC_T)
+summary(lm6)
+abline(a=lm6,col='red')
 
 #did you know r could make a map!
 plot(df$lat~df$lon,asp=1)
