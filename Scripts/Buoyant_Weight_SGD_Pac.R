@@ -72,6 +72,7 @@ NN_max=unlist(lapply(c(1:20),function(x){max(bio$NN_umolL[bio$Varari_Pin==x & is
 NN_min=unlist(lapply(c(1:20),function(x){min(bio$NN_umolL[bio$Varari_Pin==x & is.na(bio$NN_umolL)==F])}))
 Flow=unlist(lapply(c(1:20),function(x){Clod$X._loss[Clod$PIN==x]}))
 NC_T=unlist(lapply(c(1:20),function(x){NC_Turb$C_N[NC_Turb$Varari_Pin==x]}))
+N_Percent_T=unlist(lapply(c(1:20),function(x){NC_Turb$N_percent[NC_Turb$Varari_Pin==x]}))
 bwChangeA=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="A"]})) #if you run this, you will only get 19 numbers because Pin 1 had the uncaged corals removed
 bwChangeA=c(NA,bwChangeA) #Because it was just the first pin, we can do this. If we had losses elsewhere .... look at stacks overflow
 bwChangeB=unlist(lapply(c(1:20),function(x){bw$Percent_Change[bw$pin==x & bw$ABC=="B"]})) 
@@ -102,6 +103,7 @@ df=data.frame(pin=pin,
               NN_min=NN_min,
               Flow=Flow,
               NC_T=NC_T,
+              N_Percent_T=N_Percent_T,
               bwChangeA=bwChangeA,
               bwChangeB=bwChangeB,
               bwChangeC=bwChangeC,
@@ -175,6 +177,74 @@ plot(df$bw_sa_ChangeC~df$NC_T, pch=20)
 lm6=lm(df$bw_sa_ChangeC~df$NC_T)
 summary(lm6)
 abline(a=lm6,col='red')
+
+#N_Percent_Turb plot
+plot(df$bw_sa_ChangeC~df$N_Percent_T, pch=20)
+lm7=lm(df$bw_sa_ChangeC~df$N_Percent_T)
+summary(lm7)
+abline(a=lm7,col='red')
+#inGGPLOT
+N_Percent_Plot <-ggplot(df, aes(
+  y=bw_sa_ChangeC, 
+  x=N_Percent_T)) +
+  stat_poly_line(se=FALSE) +
+  stat_poly_eq(use_label(c("eq", "adj.R2")),label.x=0.9)+
+  stat_poly_eq(use_label(c("p")),label.x=0.9,label.y = 0.88)+
+  geom_point(aes(color=Gtype))+
+  labs(title='Coral Growth along Varari Submarine Groundwater Discharge Gradient',
+       x='Percent N in Turbinaria',
+       y='Change in Buoyant Weight over Surface Area',
+       color='Genotype')+
+  theme(plot.title = element_text(hjust = 0.5))
+N_Percent_Plot
+
+#N_Percent with all plotted
+N_Percent_All_PAC <- ggplot(df,aes(x=N_Percent_T))+
+  geom_point(aes(y=bw_sa_ChangeA, color='Uncaged'))+
+  geom_point(aes(y=bw_sa_ChangeB, color='Partialy Caged'))+
+  geom_point(aes(y=bw_sa_ChangeC, color='Caged'))+
+  scale_color_manual(values=c('darkolivegreen4','darkorchid','darkgoldenrod1'))+
+  labs(title='Coral Growth along Varari Submarine Groundwater Discharge Gradient',
+       x='Percent N in Turbinaria',
+       y='Change in Buoyant Weight over Surface Area',
+       color='Genotype')+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeA), size=.5, colour="darkolivegreen4",se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeB), size=.5, colour='darkorchid', se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeC), size=.5, colour='darkgoldenrod1',se=FALSE, formula=y~x)+
+  theme(plot.title = element_text(hjust = 0.5))
+N_Percent_All_PAC
+
+
+#N_Percent with all plotted by Genotype
+N_Percent_All_PAC <- ggplot(df,aes(x=N_Percent_T))+
+  geom_point(aes(y=bw_sa_ChangeA, color='Uncaged'))+
+  geom_point(aes(y=bw_sa_ChangeB, color='Partialy Caged'))+
+  geom_point(aes(y=bw_sa_ChangeC, color='Caged'))+
+  scale_color_manual(values=c('darkolivegreen4','darkorchid','darkgoldenrod1'))+
+  labs(title='Coral Growth along Varari Submarine Groundwater Discharge Gradient',
+       x='Percent N in Turbinaria',
+       y='Change in Buoyant Weight over Surface Area',
+       color='Genotype')+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeA), size=.5, colour="darkolivegreen4",se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeB), size=.5, colour='darkorchid', se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeC), size=.5, colour='darkgoldenrod1',se=FALSE, formula=y~x)+
+  theme(plot.title = element_text(hjust = 0.5))
+N_Percent_All_PAC
+
+#With Megan
+N_Percent_AC_PAC <- ggplot(df,aes(x=N_Percent_T))+
+  geom_point(aes(y=bw_sa_ChangeA, color='Uncaged'))+
+  geom_point(aes(y=bw_sa_ChangeC, color='Caged'))+
+  scale_color_manual(values=c('darkolivegreen4','darkgoldenrod1'))+
+  labs(title='Coral Growth along Varari Submarine Groundwater Discharge Gradient',
+       x='Percent N in Turbinaria',
+       y='Change in Buoyant Weight over Surface Area',
+       color='Genotype')+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeA), size=.5, colour="darkolivegreen4",se=FALSE, formula=y~x)+
+  geom_smooth(method='lm', aes(y=bw_sa_ChangeC), size=.5, colour='darkgoldenrod1',se=FALSE, formula=y~x)+
+  theme(plot.title = element_text(hjust = 0.5))
+N_Percent_AC_PAC
+
 
 #did you know r could make a map!
 plot(df$lat~df$lon,asp=1)
