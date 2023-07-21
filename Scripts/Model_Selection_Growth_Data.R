@@ -131,4 +131,4 @@ modelTable <- modTable %>%
                              if_else(Parameter == "Phosphate_umolL", "Phosphate",
                                      if_else(Parameter == "Silicate_umolL", "Silicate", Parameter))))
 
-write_csv(modelTable, here("Output", "PaperFigures","Model_Selection_Table.csv"))
+write_csv(modelTable, here("Data","Output", "Model_Selection_Growth_Data.csv"))
