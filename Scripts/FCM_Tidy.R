@@ -6,8 +6,10 @@
 library(dplyr)
 library(tidyr)
 library(here)
+library(readr)
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
-FCM <- read.csv(here("Data", "Coral_Data", "CS_FCM_Plate_3_1"))
+FCM <- read.csv(here("Data","Coral_Data","CS_FCM_Plate_3_1.csv"))
+meta <-read.csv(here("Data","Coral_Data","FCM_Meta.csv"))
 #FCM <- read.csv("/Users/calliestephenson/Downloads/CS_FCM_Plate_3_1.csv")
 #meta <- read.csv("/Users/calliestephenson/Downloads/FCM_Meta.csv")
 
@@ -22,5 +24,5 @@ merged_FCM <- meta %>%
 
 FCM_data_raw <- merged_FCM
 
-write_csv(TLE_Sum_Pru, here("Data", "Coral_Data", "TLE_summary_Pru.csv"))
+write_csv(merged_FCM, here("Data", "Coral_Data", "FCM_data_raw.csv"))
 
