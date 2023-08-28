@@ -1,0 +1,12 @@
+---
+title: "SGD Impacts on Coral Phsiology and Fish Communities"
+author: "Callie Stephenson"
+output: github_document
+---
+
+### Introduction
+
+This is a github repository that is the holding space for data and R scripts for Callie Stephenson's work on the NSF funded project investigating impacts of Submarine Groundwater Discharge (SGD) on reef ecosystems. This project specifically looked at physiological changes experienced by corals as well as the impact of SGD on the reef fish behavior and community assemblage.
+
+### Organization
+Relevant raw data can be found in the "data" folder. All R scripts are built into the analysis.R markdown file, while all individual R scripts ran within the R markdown file (which clean data and run preliminary analyses) can be found in the "R" folder. The "Output" folder holds cleaned data files, figures, and other outputs from the analysis file.
