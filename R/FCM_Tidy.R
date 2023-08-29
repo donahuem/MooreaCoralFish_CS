@@ -24,5 +24,5 @@ merged_FCM <- meta %>%
 
 FCM_data_raw <- merged_FCM
 
-write_csv(merged_FCM, here("Output", "FCM_data.csv"))
+write_csv(merged_FCM, here("output", "FCM_data.csv"))
 
