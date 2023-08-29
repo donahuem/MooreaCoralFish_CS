@@ -43,7 +43,7 @@ write_csv(BwPac, here("output", "Skeletal_Dry_Weight_Calc_Pac.csv"))
 #############################
 ### SAME FOR PRU
 #############################
-
+Buoyant_weight_Pru <- read.csv(here("Data","PRU_Buoyant_Weight.csv"))
 Buoyant_weight_Pru <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Data/Coral_Data/PRU_Buoyant_Weight.csv")
 
 BwPru <- Buoyant_weight_Pru %>%
@@ -59,4 +59,4 @@ BwPru <- Buoyant_weight_Pru %>%
   mutate(Change_Over_Area= Change / Surface_Area) %>%
   select(Vial_No_Only, Placement_Code, T0_dry_weight.g, T1_dry_weight.g, Change, Change_Over_Area, Percent_Change)
 
-write_csv(BwPru, here("Data", "Coral_Data", "Skeletal_Dry_Weight_Calc_Pru.csv"))
+write_csv(BwPru, here("output", "Skeletal_Dry_Weight_Calc_Pru.csv"))
