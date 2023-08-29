@@ -22,7 +22,7 @@ merged_FCM <- meta %>%
   left_join(FCM, by = "Tube.Name.") %>%
   filter(GOOD.SAMPLE)
 
-FCM_data_raw <- merged_FCM
+FCM_data <- merged_FCM
 
 write_csv(merged_FCM, here("output", "FCM_data.csv"))
 
