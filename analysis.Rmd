@@ -7,3 +7,16 @@ output: github_document
 ### Introduction
 
 This is a R Markdown file in which I hope to write out my analyses. I will use this document to process all the R scripts found in the R folder and complete my project. 
+
+#### Tidying the data
+```{r tidy_data, echo = FALSE, message = FALSE}
+#reminder you can make one of these with CMD+opt+i
+library(here)
+source(here("R","FCM_Tidy.R"))
+source(here("R","TLE_Tidy.R"))
+```
+
+```{r}
+
+```
+
