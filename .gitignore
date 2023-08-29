@@ -37,3 +37,15 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+
+#Copied from jMadin
+.Rproj.user
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+
+/doc
+/data/images
