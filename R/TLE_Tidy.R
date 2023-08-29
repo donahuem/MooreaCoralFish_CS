@@ -2,7 +2,7 @@
 # Script for converting raw TLE data into usable files
 # Callie Stephenson
 # Created: 8/28/23
-# Last Modified: 8/28/23
+# Last Modified: 8/29/23
 
 library(tidyverse)
 library(ggplot2)
@@ -12,8 +12,8 @@ library(here)
 
 ######## Add in Data ########
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
-meta <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PRU_Coral_Codes.csv")
-TLE_Pru <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/TLE_Pru.csv")
+meta <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PRU_Coral_Codes.csv",show_col_types = FALSE)
+TLE_Pru <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/TLE_Pru.csv",show_col_types = FALSE)
 #TLE_Pac <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/Data/Coral_Data/TLE_Pac.csv")
 #This sheet still needs to be created from the Google Drive
 #The raw data is done, CS just needs to move it over
