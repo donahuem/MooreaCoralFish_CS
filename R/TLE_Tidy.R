@@ -12,8 +12,8 @@ library(here)
 
 ######## Add in Data ########
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
-meta <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/Data/Coral_Data/PRU_Coral_Codes.csv")
-TLE_Pru <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/Data/Coral_Data/TLE_Pru.csv")
+meta <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PRU_Coral_Codes.csv")
+TLE_Pru <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/TLE_Pru.csv")
 #TLE_Pac <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/Data/Coral_Data/TLE_Pac.csv")
 #This sheet still needs to be created from the Google Drive
 #The raw data is done, CS just needs to move it over
@@ -34,4 +34,4 @@ TLE_Sum_Pru <- TLE_Pru %>%
 #### work through the area and TLE metrics as %∆ or log that which might help if need normality
 
 #### Write as a .csv
-write_csv(TLE_Sum_Pru, here("Data", "Coral_Data", "TLE_summary_Pru.csv"))
+write_csv(TLE_Sum_Pru, here("data", "TLE_summary_Pru.csv"))
