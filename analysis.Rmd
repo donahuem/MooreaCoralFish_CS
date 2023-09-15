@@ -17,6 +17,13 @@ source(here("R","TLE_Tidy.R"))
 ```
 
 ```{r}
+library(ggplot2)
+library(PerformanceAnalytics)
+```
 
+```{r}
+FCM <- read.csv("output/FCM_data.csv")
+ggplot(FCM)+
+  geom_point(aes(x=Cage_Uncaged, y=sym_FSC.Events, color=Species))
 ```
 

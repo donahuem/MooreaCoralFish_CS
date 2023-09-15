@@ -22,7 +22,19 @@ merged_FCM <- meta %>%
   left_join(FCM, by = "Tube.Name.") %>%
   filter(GOOD.SAMPLE)
 
-FCM_data <- merged_FCM
+FCM_data <- merged_FCM[,c(1,2,6,7,13,17,21)]
 
-write_csv(merged_FCM, here("output", "FCM_data.csv"))
+PAC <- read.csv("data/PAC_Coral_Codes.csv")
+PRU <- read.csv("data/PRU_Coral_Codes.csv")
+
+PAC <- PAC[,c(2,3,4,8,9)] %>% 
+  rename("PLACEMENT" = "Placement_Code")
+PRU <- PRU[,c(2,3,4,7,8)] %>% 
+  rename("PLACEMENT" = "Placement_Code")
+
+codes <- rbind(PAC,PRU)
+
+FCM <- left_join(FCM_data, codes)
+  
+write_csv(FCM, here("output", "FCM_data.csv"))
 
