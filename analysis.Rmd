@@ -12,18 +12,37 @@ This is a R Markdown file in which I hope to write out my analyses. I will use t
 ```{r tidy_data, echo = FALSE, message = FALSE}
 #reminder you can make one of these with CMD+opt+i
 library(here)
-source(here("R","FCM_Tidy.R"))
-source(here("R","TLE_Tidy.R"))
 ```
 
 ```{r}
 library(ggplot2)
 library(PerformanceAnalytics)
+library(dplyr)
 ```
 
 ```{r}
+nut <- read.csv("data/March_nutrients_processed.csv")
 FCM <- read.csv("output/FCM_data.csv")
 ggplot(FCM)+
   geom_point(aes(x=Cage_Uncaged, y=sym_FSC.Events, color=Species))
+
+ggplot(FCM)+
+  geom_boxplot(aes(x=Cage_Uncaged, y=sym_FSC.Events, color = Species))
+```
+
+```{r, warning=FALSE, message=FALSE}
+FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
+all_data <- left_join(FCM, nut, by="CowTagID")  #join them
+all_data <- drop_na(all_data)
+
+m1 <- lm(sym_FSC.Events ~ log(Maximum), data= all_data %>%
+           filter(Parameters=="Silicate_umolL"))
+anova(m1)
+summary(m1)
+
+max <- all_data %>% 
+       filter(Parameters=="Silicate_umolL")
+
+hist(max$Maximum)
 ```
 

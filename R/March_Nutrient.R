@@ -66,6 +66,6 @@ full_data <- left_join(full_data, sd_dataS) %>%
   select(-c(sdS))
 full_data <- left_join(full_data, gps)
 
-#YOU DID IT!
+#YOU DID IT! <3
 #MAKE IT A CSV:
 write_csv(full_data,"data/March_nutrients_processed.csv")
