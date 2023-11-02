@@ -33,12 +33,27 @@ FCM <- FCM_full %>%
   drop_na()
 FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
 
+
+PAC_meta <- read.csv("data/PAC_Coral_Codes.csv")
+PAC_meta$Cage_Uncaged[PAC_meta$Placement_Code == 'PAC V01 A'] <- 'A'
+PAC_meta$Cage_Uncaged[PAC_meta$Placement_Code == 'PAC V01 B'] <- 'B'
+PAC_meta$Cage_Uncaged[PAC_meta$Placement_Code == 'T0'] <- 'T0'
+PAC_meta <- PAC_meta[-72, ]
+write.csv(PAC_meta, "data/PAC_Coral_Codes.csv")
+
 #meta takes a little massaging
 PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") %>% 
   select(!Slurry_No)
 PRU_meta <- read.csv("data/PRU_Coral_Codes.csv")
 meta <- rbind(PAC_meta, PRU_meta)
+meta <- meta[!is.na(meta$Placement_Code), ]
 meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
+
+meta$Cage_Uncaged[meta$Placement_Code == 'PAC V01 A'] <- 'A'
+meta$Cage_Uncaged[meta$Placement_Code == 'PAC V01 B'] <- 'B'
+
+#make a master data
+data <- left_join(meta, BW)
 ```
 ## Buoyant Weight
 ### Data Exploration:
