@@ -8,18 +8,38 @@ output: github_document
 
 This is a R Markdown file in which I hope to write out my analyses. I will use this document to process all the R scripts found in the R folder and complete my project. 
 
-#### Tidying the data
-```{r tidy_data, echo = FALSE, message = FALSE}
-#reminder you can make one of these with CMD+opt+i
+#### Loading the data
+```{r install packages, echo=FALSE}
+library(tidyverse)
 library(here)
-```
-
-```{r}
+library(ggrepel)
+library(patchwork)
+library(tidytext)
+library(AICcmodavg)
+library(kableExtra)
+library(PNWColors)
+library(fishualize)
+library(lme4)
+library(ggpp)
 library(ggplot2)
-library(PerformanceAnalytics)
-library(dplyr)
+```
+```{r load data, echo=FALSE}
+nut <- read.csv("data/March_nutrients_processed.csv")
+BW <- read.csv("data/BW_tidy.csv")
+TLE <- read.csv("data/TLE_summary.csv")
+FCM <- read.csv("output/FCM_data.csv")
 ```
 
+# Buoyant Weight:
+## Look for Outliers
+```{r BW Pru, echo=FALSE}
+
+
+```
+
+
+
+FCM Data Analysis:
 ```{r}
 nut <- read.csv("data/March_nutrients_processed.csv")
 FCM <- read.csv("output/FCM_data.csv")
