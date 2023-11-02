@@ -11,16 +11,17 @@ library(AICcmodavg)
 library(kableExtra)
 library(PNWColors)
 library(lme4)
+library(fishualize)
 ###############################
 # READ IN DATA
 ###############################
 
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
-meta <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/Data/Coral_Data/PRU_Coral_Codes.csv")
+meta <- read_csv("data/PRU_Coral_Codes.csv")
 #meta <- read_csv(here("Data", "Coral_Data","PAC_Coral_Codes.csv"))
-BW <- read_csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Data/Coral_Data/Skeletal_Dry_Weight_Calc_Pru.csv") 
+BW <- read_csv("data/PRU_Buoyant_Weight.csv") 
 #BW <- read_csv(here("Data","Coral_Data","Skeletal_Dry_Weight_Calc_Pru"))
-TLE_Pru <- read_csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/Data/Coral_Data/TLE_Pru.csv")
+TLE_Pru <- read_csv("data/TLE_Pru.csv")
 
 #meta <- meta %>% mutate(Cage_Uncaged = recode(Cage_Uncaged, "A" = "1", "B" = "2", "C" = "3"))
 meta$Cage_Uncaged <- factor(meta$Cage_Uncaged)

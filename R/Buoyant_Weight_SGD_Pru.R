@@ -4,7 +4,7 @@ library(ggplot2)
 library(ggpmisc)
 
 #First we input coral data
-Buoyant_weight_Pru <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PRU_Buoyant_Weight.csv")
+Buoyant_weight_Pru <- read.csv("data/PRU_Buoyant_Weight.csv")
 
 #Now we input biogeochem data
 BioGC.Info_raw <-read_csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Allbiogeochemdata_QC.csv")
@@ -21,11 +21,11 @@ BioGC.Info_no_Seep <- BioGC.Info %>%
 BioGC.Info_no_Seep$Varari_Pin <-as.numeric(gsub("V","",BioGC.Info_no_Seep$CowTagID)) #adds column 'Varari_Pin' that removes the V in CowTagID so that pin placements are numbers not characters
 
 #Insert the coral dictionary
-Coral_Dict <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/PRU_Coral_Codes.csv")
+Coral_Dict <- read.csv("data/PRU_Coral_Codes.csv")
 Coral_Dict=Coral_Dict[-which(is.na(Coral_Dict$Pin_Number)),]
 
 #And import flow data for clod cards
-Clod <- read.csv("https://raw.githubusercontent.com/donahuem/MooreaCoralFish_CS/main/Coral_Data/Clod_Cards.csv")
+Clod <- read.csv("data/Clod_Cards.csv")
 
 #Import data for NC in Turbinaria
 NC_Turb <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Nutrients/Turb_NC.csv")

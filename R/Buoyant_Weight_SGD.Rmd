@@ -56,6 +56,7 @@ Silicate_Gradient <- ggplot(BioGC.Info, aes(
         fill = "darkolivegreen") +labs(title='Silicate Gradient with Seep')
 Silicate_Gradient
 ```
+
 Since the seep is so much higher than the other values, and the seep was not used in this experiment, I graphed this data without the seep included:
 ```{r}
 Silicate_Gradient_no_Seep <- ggplot(BioGC.Info_no_Seep, aes(
@@ -77,6 +78,7 @@ Silicate_Gradient_no_Seep <- ggplot(BioGC.Info_no_Seep, aes(
   
 Silicate_Gradient_no_Seep 
 ```
+
 Now that we have an understanding of what the gradient looks like, it is time to compare that to our change in buoyant weight
 
 This code creates a Data Frame with the mean values displayed above
