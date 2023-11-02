@@ -35,6 +35,7 @@ PRU <- PRU[,c(2,3,4,7,8)] %>%
 codes <- rbind(PAC,PRU)
 
 FCM <- left_join(FCM_data, codes)
+FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
   
-write_csv(FCM, here("output", "FCM_data.csv"))
+write_csv(FCM, here("data", "FCM_data.csv"))
 
