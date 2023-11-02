@@ -3,7 +3,7 @@ Coral
 Callie Stephenson
 2023-08-29
 
-### Introduction
+## Introduction
 
 This is a R Markdown file in which I hope to write out my analyses. I
 will use this document to process all the R scripts found in the R
@@ -11,76 +11,39 @@ folder and complete my project.
 
 #### Loading the data
 
-    ## ── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
-    ## ✔ dplyr     1.1.3     ✔ readr     2.1.4
-    ## ✔ forcats   1.0.0     ✔ stringr   1.5.0
-    ## ✔ ggplot2   3.4.4     ✔ tibble    3.2.1
-    ## ✔ lubridate 1.9.3     ✔ tidyr     1.3.0
-    ## ✔ purrr     1.0.2     
-    ## ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-    ## ✖ dplyr::filter() masks stats::filter()
-    ## ✖ dplyr::lag()    masks stats::lag()
-    ## ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
-    ## here() starts at /Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS
-    ## 
-    ## 
-    ## Attaching package: 'kableExtra'
-    ## 
-    ## 
-    ## The following object is masked from 'package:dplyr':
-    ## 
-    ##     group_rows
-    ## 
-    ## 
-    ## Loading required package: Matrix
-    ## 
-    ## 
-    ## Attaching package: 'Matrix'
-    ## 
-    ## 
-    ## The following objects are masked from 'package:tidyr':
-    ## 
-    ##     expand, pack, unpack
-    ## 
-    ## 
-    ## 
-    ## Attaching package: 'lme4'
-    ## 
-    ## 
-    ## The following object is masked from 'package:AICcmodavg':
-    ## 
-    ##     checkConv
-    ## 
-    ## 
-    ## 
-    ## Attaching package: 'ggpp'
-    ## 
-    ## 
-    ## The following object is masked from 'package:ggplot2':
-    ## 
-    ##     annotate
+## Buoyant Weight
 
-# Buoyant Weight:
+### Data Exploration:
 
-## Look for Outliers
+Data exploration focuses on the following points: 1. Outliers 2.
+Collinearity 3. Independence (Relationships between response and
+explanatory variables)
+
+#### Look for Outliers:
+
+It looks like that 13 A is really off. We know it broke, so I am
+removing it and replotted next to it:
+
+![](analysis_files/figure-gfm/BW%20Outlier%20Plot-1.png)<!-- -->
+
+## TLE
+
+### Data Exploration:
+
+Data exploration focuses on the following points: 1. Outliers 2.
+Collinearity 3. Independence (Relationships between response and
+explanatory variables)
+
+![](analysis_files/figure-gfm/TLE%20Plot-1.png)<!-- --> \## Symbionts
+
+### Data Exploration:
+
+Data exploration focuses on the following points: 1. Outliers 2.
+Collinearity 3. Independence (Relationships between response and
+explanatory variables)
 
 FCM Data Analysis:
-
-``` r
-nut <- read.csv("data/March_nutrients_processed.csv")
-FCM <- read.csv("output/FCM_data.csv")
-ggplot(FCM)+
-  geom_point(aes(x=Cage_Uncaged, y=sym_FSC.Events, color=Species))
-```
-
-![](analysis_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
-
-``` r
-ggplot(FCM)+
-  geom_boxplot(aes(x=Cage_Uncaged, y=sym_FSC.Events, color = Species))
-```
-
-![](analysis_files/figure-gfm/unnamed-chunk-1-2.png)<!-- -->
+![](analysis_files/figure-gfm/FCM-1.png)<!-- -->![](analysis_files/figure-gfm/FCM-2.png)<!-- -->
 
 ``` r
 FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
@@ -130,4 +93,4 @@ max <- all_data %>%
 hist(max$Maximum)
 ```
 
-![](analysis_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](analysis_files/figure-gfm/random%20model-1.png)<!-- -->

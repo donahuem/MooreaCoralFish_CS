@@ -4,12 +4,12 @@ author: "Callie Stephenson"
 date: "2023-08-29"
 output: github_document
 ---
-### Introduction
+## Introduction
 
 This is a R Markdown file in which I hope to write out my analyses. I will use this document to process all the R scripts found in the R folder and complete my project. 
 
 #### Loading the data
-```{r install packages, echo=FALSE}
+```{r load packages, echo=FALSE, message=FALSE}
 library(tidyverse)
 library(here)
 library(ggrepel)
@@ -23,26 +23,98 @@ library(lme4)
 library(ggpp)
 library(ggplot2)
 ```
+
 ```{r load data, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
 BW <- read.csv("data/BW_tidy.csv")
 TLE <- read.csv("data/TLE_summary.csv")
-FCM <- read.csv("output/FCM_data.csv")
+FCM_full <- read.csv("data/FCM_data.csv")
+FCM <- FCM_full %>% 
+  drop_na()
+FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
+
+#meta takes a little massaging
+PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") %>% 
+  select(!Slurry_No)
+PRU_meta <- read.csv("data/PRU_Coral_Codes.csv")
+meta <- rbind(PAC_meta, PRU_meta)
+meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
+```
+## Buoyant Weight
+### Data Exploration:
+Data exploration focuses on the following points:
+1. Outliers
+2. Collinearity
+3. Independence (Relationships between response and explanatory variables) 
+
+#### Look for Outliers:
+It looks like that 13 A is really off. We know it broke, so I am removing it and replotted next to it:
+```{r BW Outlier Tidy, echo=FALSE}
+# BW Plot
+BW <- merge(BW, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
+BW_no <- BW[!(BW$Placement_Code == "PRU V13 A"), ]
+```
+```{r BW Outlier Plot, echo=FALSE}
+par(mar = c(2.5, 1, 1, 1) + 0.1)
+layout(matrix(1:2, nrow = 2), heights = c(3, 3))
+dotchart(BW$Change_Over_Area, main = "∆BW", groups = BW$Cage_Uncaged)
+dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", groups = BW_no$Cage_Uncaged)
+layout(1)
 ```
 
-# Buoyant Weight:
-## Look for Outliers
-```{r BW Pru, echo=FALSE}
+#### Look for Collinearity:
 
 
+## TLE
+### Data Exploration:
+Data exploration focuses on the following points:
+1. Outliers
+2. Collinearity
+3. Independence (Relationships between response and explanatory variables) 
+
+```{r TLE Plot, echo=FALSE}
+TLE <- merge(TLE, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
+# Setting up the layout
+layout(matrix(c(1, 2, 3, 4), 2, 2, byrow = TRUE))
+# Side Max L Plot
+dotchart(TLE$Max_L_AVG, main = "Max L", groups = TLE$Cage_Uncaged)
+# Basal Max L plot
+dotchart(TLE$Max_L_Basal, main = "Max L Basal", groups = TLE$Cage_Uncaged)
+# Area plot
+dotchart(TLE$Area_AVG, main = "Area", groups = TLE$Cage_Uncaged)
+# Basal Area plot
+dotchart(TLE$Area_Basal, main = "Basal Area", groups = TLE$Cage_Uncaged)
+# Reset the layout
+layout(1)
+# Add a title
+title("TLE Outlier Dotchart", line = -1, outer = TRUE, cex.main = 1.5)
 ```
 
+## Symbionts
 
+### Data Exploration:
+Data exploration focuses on the following points:
+1. Outliers
+2. Collinearity
+3. Independence (Relationships between response and explanatory variables) 
+
+Outliers
+I have a clear problem with my maximum data point for PRU V17 C, which is almost double all the others.
+I removed and replotted
+
+```{r}
+FCM_no <- FCM[!(FCM$PLACEMENT == "PRU V17 C"), ]
+par(mar = c(2.5, 1, 1, 1) + 0.1)
+layout(matrix(1:2, nrow = 2), heights = c(3, 3))
+dotchart(FCM$sym_FSC.Events.μL.V., main = "Symbionts", groups = FCM$Cage_Uncaged)
+dotchart(FCM_no$sym_FSC.Events.μL.V., main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
+layout(1)
+```
 
 FCM Data Analysis:
-```{r}
+```{r FCM, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
-FCM <- read.csv("output/FCM_data.csv")
+FCM <- read.csv("data/FCM_data.csv")
 ggplot(FCM)+
   geom_point(aes(x=Cage_Uncaged, y=sym_FSC.Events, color=Species))
 
@@ -50,7 +122,7 @@ ggplot(FCM)+
   geom_boxplot(aes(x=Cage_Uncaged, y=sym_FSC.Events, color = Species))
 ```
 
-```{r, warning=FALSE, message=FALSE}
+```{r random model, warning=FALSE, message=FALSE}
 FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
 all_data <- left_join(FCM, nut, by="CowTagID")  #join them
 all_data <- drop_na(all_data)
