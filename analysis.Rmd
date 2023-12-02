@@ -26,36 +26,32 @@ library(ggplot2)
 
 ```{r load data, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
+sa <- read.csv("data/Surface_Area.csv")
 BW <- read.csv("data/BW_tidy.csv")
 TLE <- read.csv("data/TLE_summary.csv")
-FCM_full <- read.csv("data/FCM_data.csv")
-FCM <- FCM_full %>% 
-  drop_na()
+FCM <- read.csv("data/FCM_data.csv") %>% 
+  rename(Placement_Code = PLACEMENT)
+FCM_Join <- FCM[, c("Placement_Code", "sym_FSC.Events")]
 FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
-
-
-PAC_meta <- read.csv("data/PAC_Coral_Codes.csv")
-PAC_meta$Cage_Uncaged[PAC_meta$Placement_Code == 'PAC V01 A'] <- 'A'
-PAC_meta$Cage_Uncaged[PAC_meta$Placement_Code == 'PAC V01 B'] <- 'B'
-PAC_meta$Cage_Uncaged[PAC_meta$Placement_Code == 'T0'] <- 'T0'
-PAC_meta <- PAC_meta[-72, ]
-write.csv(PAC_meta, "data/PAC_Coral_Codes.csv")
 
 #meta takes a little massaging
 PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") %>% 
-  select(!Slurry_No)
-PRU_meta <- read.csv("data/PRU_Coral_Codes.csv")
-meta <- rbind(PAC_meta, PRU_meta)
-meta <- meta[!is.na(meta$Placement_Code), ]
+  select(!X) %>% 
+  select(!X.1)
+PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") %>% 
+  select(!X)
+meta <- rbind(PAC_meta, PRU_meta) %>% 
+  select(!Species)
 meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
 
-meta$Cage_Uncaged[meta$Placement_Code == 'PAC V01 A'] <- 'A'
-meta$Cage_Uncaged[meta$Placement_Code == 'PAC V01 B'] <- 'B'
-
 #make a master data
-data <- left_join(meta, BW)
+data <- left_join(meta, BW, by = join_by(Placement_Code)) %>% 
+  select(!X) %>% 
+  left_join(TLE, by = join_by(Placement_Code, Species)) %>% 
+  select(!X) %>% 
+  left_join(FCM_Join, by = join_by(Placement_Code))
 ```
-## Buoyant Weight
+
 ### Data Exploration:
 Data exploration focuses on the following points:
 1. Outliers
@@ -63,6 +59,7 @@ Data exploration focuses on the following points:
 3. Independence (Relationships between response and explanatory variables) 
 
 #### Look for Outliers:
+Buoyant Weight
 It looks like that 13 A is really off. We know it broke, so I am removing it and replotted next to it:
 ```{r BW Outlier Tidy, echo=FALSE}
 # BW Plot
@@ -76,17 +73,9 @@ dotchart(BW$Change_Over_Area, main = "∆BW", groups = BW$Cage_Uncaged)
 dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", groups = BW_no$Cage_Uncaged)
 layout(1)
 ```
+I removed PRU V13 A placement because this was broken in the field, creating a large negative change in buoyant weight. 
 
-#### Look for Collinearity:
-
-
-## TLE
-### Data Exploration:
-Data exploration focuses on the following points:
-1. Outliers
-2. Collinearity
-3. Independence (Relationships between response and explanatory variables) 
-
+TLE
 ```{r TLE Plot, echo=FALSE}
 TLE <- merge(TLE, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
 # Setting up the layout
@@ -105,39 +94,51 @@ layout(1)
 title("TLE Outlier Dotchart", line = -1, outer = TRUE, cex.main = 1.5)
 ```
 
-## Symbionts
+### Symbionts
 
-### Data Exploration:
-Data exploration focuses on the following points:
-1. Outliers
-2. Collinearity
-3. Independence (Relationships between response and explanatory variables) 
-
-Outliers
-I have a clear problem with my maximum data point for PRU V17 C, which is almost double all the others.
-I removed and replotted
-
-```{r}
-FCM_no <- FCM[!(FCM$PLACEMENT == "PRU V17 C"), ]
+```{r Sym plot, echo=FALSE}
+FCM <- FCM[complete.cases(FCM[, "Cage_Uncaged"]), ] #Remove T0 samples by only including rows where the "Cage_Uncaged" exists
+FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged) 
+FCM_no <- FCM[!(FCM$Placement_Code == "PRU V17 C"), ]
 par(mar = c(2.5, 1, 1, 1) + 0.1)
 layout(matrix(1:2, nrow = 2), heights = c(3, 3))
 dotchart(FCM$sym_FSC.Events.μL.V., main = "Symbionts", groups = FCM$Cage_Uncaged)
 dotchart(FCM_no$sym_FSC.Events.μL.V., main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
 layout(1)
 ```
+Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as much as needed to the sample, but for now I will omit in my analyses (using dataframe FCM_no for "no outliers")
+
+Now I'm going to make the symbiont data for the full sample   
+```{r}
+#upscale it to the full sample
+#sample ran was 280 µL, full sample was 50mL
+FCM_no$sym_FSC.Events.μL.V._full <- FCM_no$sym_FSC.Events.μL.V. * (50 / 0.28)
+FCM_no <- merge(FCM_no, sa[, c('Placement_Code', 'Surface_Area')], by = 'Placement_Code') #make a joining variable
+FCM_no$sym_FSC.Events.μL.V._normalized <- FCM_no$sym_FSC.Events.μL.V._full / FCM_no$Surface_Area #divide by the surface area for symbionts per cm
+
+dotchart(FCM_no$sym_FSC.Events.μL.V._normalized, main = "Normalized Symbionts", groups = FCM_no$Cage_Uncaged)
+boxplot(FCM_no$sym_FSC.Events.μL.V._normalized ~ FCM_no$Cage_Uncaged)
+```
+
 
 FCM Data Analysis:
 ```{r FCM, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
 FCM <- read.csv("data/FCM_data.csv")
-ggplot(FCM)+
-  geom_point(aes(x=Cage_Uncaged, y=sym_FSC.Events, color=Species))
+#ggplot(FCM)+
+  #geom_point(aes(x=Cage_Uncaged, y=sym_FSC.Events, color=Species))
+ggplot(FCM_no)+
+  geom_boxplot(aes(x=Cage_Uncaged, y=sym_FSC.Events, color = Species))+
+  scale_color_fish_d(option = "Trimma_lantana")
 
-ggplot(FCM)+
-  geom_boxplot(aes(x=Cage_Uncaged, y=sym_FSC.Events, color = Species))
+anova_PRU <- aov(sym_FSC.Events.μL.V._normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Porites_rus"))
+summary(anova_PRU)
+
+anova_PAC <- aov(sym_FSC.Events.μL.V._normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Pocillopora_acuta"))
+summary(anova_PAC)
 ```
 
-```{r random model, warning=FALSE, message=FALSE}
+```{r random model, echo=FALSE, warning=FALSE, message=FALSE}
 FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
 all_data <- left_join(FCM, nut, by="CowTagID")  #join them
 all_data <- drop_na(all_data)
@@ -151,5 +152,97 @@ max <- all_data %>%
        filter(Parameters=="Silicate_umolL")
 
 hist(max$Maximum)
+```
+
+
+```{r, warning=FALSE}
+bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
+bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
+all_data <- left_join(bw_no, nut, by="CowTagID")  #join them
+all_data <- drop_na(all_data)
+
+bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
+
+bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
+
+bw_m1_PAC <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PAC"))
+
+bw_m1_PRU <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PRU"))
+
+summary(bw_m1_caged_PRU)
+summary(bw_m1_PAC)
+```
+
+IGNORE THESE PLOTS:
+```{r}
+gg_data <- all_data %>% 
+  filter(Parameters == "Silicate_umolL")
+
+gg_data <- merge(gg_data, FCM_Join[, c("Placement_Code", "sym_FSC.Events")], by = "Placement_Code")
+
+ggplot(gg_data, aes(x = CVSeasonal, y = Percent_Change)) +
+  geom_point(aes(color=Species)) +  # Add points
+  labs(title = "Percent Change in Buoyant Weight vs Salinity Variability",
+       x = "CV Silicate",
+       y = "Percent Change")
+
+
+gg_data_no <- gg_data[!(gg_data$Placement_Code == "PRU V17 C"), ]
+
+ggplot(gg_data_no, aes(x = CVSeasonal, y = sym_FSC.Events)) +
+  geom_point(aes(color=Species)) +  # Add points
+  labs(title = "Number of Symbionts vs Salinity Variability",
+       x = "CV Silicate",
+       y = "Symbionts")
+
+#NOW I'M ONLY LOOKING AT CAGED:
+gg_data <- all_data %>% 
+  filter(Parameters == "Silicate_umolL") %>% 
+  filter(Cage_Uncaged == "C")
+
+ggplot(gg_data, aes(x = CVSeasonal, y = Change_Over_Area)) +
+  geom_point(aes(color=Species)) +  # Add points
+  labs(title = "Percent Change in Buoyant Weight vs Salinity Variability",
+       x = "CV Silicate",
+       y = "Change Over Area")
+
+```
+```{r}
+#IS C MORE LIKELY TO HAVE BEEN BIGGER THAN A OR B
+sym_weight <- read.csv("data/Symbiont_filter_weight.csv")
+sym_weight$Placement_Code <- sym_weight$Placement
+sym_weight$Symbiont_dry_weight <- as.numeric(sym_weight$Symbiont_dry_weight)
+sym_weight <- subset(sym_weight, Symbiont_dry_weight >= 0 & !is.na(Symbiont_dry_weight))
+sym_weight <- merge(sym_weight, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
+
+# Example boxplot
+boxplot(Symbiont_dry_weight ~ Cage_Uncaged, data = sym_weight)
+
+# Create subsets for each 'Cage_Uncaged' value
+subset_A <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'A']
+subset_B <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'B']
+subset_C <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'C']
+
+# Calculate proportions for each subset
+prop_A <- mean(subset_A > 0.5, na.rm = TRUE)
+prop_B <- mean(subset_B > 0.5, na.rm = TRUE)
+prop_C <- mean(subset_C > 0.5, na.rm = TRUE)
+
+# Perform proportion test for 'C' vs 'A'
+prop_test_result <- prop.test(c(sum(subset_C > 0.5), sum(subset_A > 0.5)), c(length(subset_C), length(subset_A)))
+
+# Print the proportions and test result
+cat("Proportion for 'C':", prop_C, "\n")
+cat("Proportion for 'A':", prop_A, "\n")
+print(prop_test_result)
+
 ```
 
