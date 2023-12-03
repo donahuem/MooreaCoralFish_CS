@@ -118,6 +118,7 @@ FCM_no$sym_FSC.Events_normalized <- FCM_no$sym_FSC.Events.μL.V._full / FCM_no$S
 
 dotchart(FCM_no$sym_FSC.Events_normalized, main = "Normalized Symbionts", groups = FCM_no$Cage_Uncaged)
 boxplot(FCM_no$sym_FSC.Events_normalized ~ FCM_no$Cage_Uncaged)
+
 ```
 
 
