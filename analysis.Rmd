@@ -111,13 +111,13 @@ Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as mu
 Now I'm going to make the symbiont data for the full sample   
 ```{r}
 #upscale it to the full sample
-#sample ran was 280 µL, full sample was 50mL
-FCM_no$sym_FSC.Events.μL.V._full <- FCM_no$sym_FSC.Events.μL.V. * (50 / 0.28)
+#sample ran was 280 µL, sym_FSC.Events.μL.V is already per μL full sample was 50mL
+FCM_no$sym_FSC.Events.μL.V._full <- FCM_no$sym_FSC.Events.μL.V. * (50)
 FCM_no <- merge(FCM_no, sa[, c('Placement_Code', 'Surface_Area')], by = 'Placement_Code') #make a joining variable
-FCM_no$sym_FSC.Events.μL.V._normalized <- FCM_no$sym_FSC.Events.μL.V._full / FCM_no$Surface_Area #divide by the surface area for symbionts per cm
+FCM_no$sym_FSC.Events_normalized <- FCM_no$sym_FSC.Events.μL.V._full / FCM_no$Surface_Area #divide by the surface area for symbionts per cm
 
-dotchart(FCM_no$sym_FSC.Events.μL.V._normalized, main = "Normalized Symbionts", groups = FCM_no$Cage_Uncaged)
-boxplot(FCM_no$sym_FSC.Events.μL.V._normalized ~ FCM_no$Cage_Uncaged)
+dotchart(FCM_no$sym_FSC.Events_normalized, main = "Normalized Symbionts", groups = FCM_no$Cage_Uncaged)
+boxplot(FCM_no$sym_FSC.Events_normalized ~ FCM_no$Cage_Uncaged)
 ```
 
 
@@ -131,10 +131,10 @@ ggplot(FCM_no)+
   geom_boxplot(aes(x=Cage_Uncaged, y=sym_FSC.Events, color = Species))+
   scale_color_fish_d(option = "Trimma_lantana")
 
-anova_PRU <- aov(sym_FSC.Events.μL.V._normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Porites_rus"))
+anova_PRU <- aov(sym_FSC.Events_normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Porites_rus"))
 summary(anova_PRU)
 
-anova_PAC <- aov(sym_FSC.Events.μL.V._normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Pocillopora_acuta"))
+anova_PAC <- aov(sym_FSC.Events_normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Pocillopora_acuta"))
 summary(anova_PAC)
 ```
 
