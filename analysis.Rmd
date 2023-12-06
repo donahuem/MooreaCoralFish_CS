@@ -161,10 +161,35 @@ bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by =
 bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
 all_data <- left_join(bw_no, nut, by="CowTagID")  #join them
 all_data <- drop_na(all_data)
+all_data$Genotype <- as.factor(all_data$Genotype)
 
 bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
+
+#do a count and summarize for genotype (to make sure no genotype is only occuring one time)
+subset_ns <-all_data %>%
+  filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
+###WE FOUND IT - YOUR FREAKIN METADATA HAS V2 AS PR21 INSTEAD OF PA21
+#GO FIX THIS
+all_data_mcraimignore <- all_data[!(all_data$Genotype == "PR21"), ]
+all_data_mcraimignore <- all_data[!(all_data$Genotype == "PA21"), ]
+
+all_data_mcraimignore<-all_data_mcraimignore  %>% 
+                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C") %>%
+  droplevels()
+
+bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), data = all_data_mcraimignore)
+anova(bw_m1_caged_PAC)
+summary(bw_m1_caged_PAC)                       
+
+subset_ns2 <- all_data_mcraimignore %>% 
+                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
+
+summary(subset_ns2)
+
+######## Go fix it in core metadata
+#please
 
 bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
                   data = all_data %>% 
@@ -182,6 +207,9 @@ summary(bw_m1_caged_PRU)
 summary(bw_m1_PAC)
 ```
 
+
+
+
 IGNORE THESE PLOTS:
 ```{r}
 gg_data <- all_data %>% 
@@ -189,11 +217,13 @@ gg_data <- all_data %>%
 
 gg_data <- merge(gg_data, FCM_Join[, c("Placement_Code", "sym_FSC.Events")], by = "Placement_Code")
 
-ggplot(gg_data, aes(x = CVSeasonal, y = Percent_Change)) +
-  geom_point(aes(color=Species)) +  # Add points
+ggplot(gg_data, aes(x = CVSeasonal, y = Percent_Change, color=Cage_Uncaged)) +
+  geom_point() +  # Add points
+  geom_smooth(method = "lm")+ #ONLY ADD IN WHEN SIGNIFICANT
   labs(title = "Percent Change in Buoyant Weight vs Salinity Variability",
        x = "CV Silicate",
-       y = "Percent Change")
+       y = "Percent Change")+
+  facet_wrap(~Species) #WOHOO
 
 
 gg_data_no <- gg_data[!(gg_data$Placement_Code == "PRU V17 C"), ]
@@ -216,6 +246,7 @@ ggplot(gg_data, aes(x = CVSeasonal, y = Change_Over_Area)) +
        y = "Change Over Area")
 
 ```
+
 ```{r}
 #IS C MORE LIKELY TO HAVE BEEN BIGGER THAN A OR B
 sym_weight <- read.csv("data/Symbiont_filter_weight.csv")
