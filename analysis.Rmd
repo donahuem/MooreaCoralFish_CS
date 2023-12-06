@@ -110,7 +110,7 @@ layout(1)
 Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as much as needed to the sample, but for now I will omit in my analyses (using dataframe FCM_no for "no outliers")
 
 Now I'm going to make the symbiont data for the full sample   
-```{r}
+```{r FCM Tidy}
 #upscale it to the full sample
 #sample ran was 280 µL, sym_FSC.Events.μL.V is already per μL full sample was 50mL
 FCM_no$sym_FSC.Events.μL.V._full <- FCM_no$sym_FSC.Events.μL.V. * (50)
@@ -124,7 +124,7 @@ boxplot(FCM_no$sym_FSC.Events_normalized ~ FCM_no$Cage_Uncaged)
 
 
 FCM Data Analysis:
-```{r FCM, echo=FALSE}
+```{r FCM vis, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
 FCM <- read.csv("data/FCM_data.csv")
 #ggplot(FCM)+
@@ -157,7 +157,7 @@ hist(max$Maximum)
 ```
 
 
-```{r, warning=FALSE}
+```{r starting models, warning=FALSE}
 bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
 bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
 all_data <- left_join(bw_no, nut, by="CowTagID")  #join them
@@ -168,6 +168,22 @@ bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype),
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
 
+bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
+
+bw_m1_PAC <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PAC"))
+
+bw_m1_PRU <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
+                  data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PRU"))
+
+summary(bw_m1_caged_PRU)
+summary(bw_m1_PAC)
+```
+```{r nyssa aim}
 #do a count and summarize for genotype (to make sure no genotype is only occuring one time)
 subset_ns <-all_data %>%
   filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
@@ -191,28 +207,13 @@ summary(subset_ns2)
 
 ######## Go fix it in core metadata
 #please
-
-bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
-
-bw_m1_PAC <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC"))
-
-bw_m1_PRU <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU"))
-
-summary(bw_m1_caged_PRU)
-summary(bw_m1_PAC)
 ```
 
 
 
 
 IGNORE THESE PLOTS:
-```{r}
+```{r proposal plots all bad very bad}
 gg_data <- all_data %>% 
   filter(Parameters == "Silicate_umolL")
 
@@ -248,7 +249,7 @@ ggplot(gg_data, aes(x = CVSeasonal, y = Change_Over_Area)) +
 
 ```
 
-```{r}
+```{r more symbiont in caged or no}
 #IS C MORE LIKELY TO HAVE BEEN BIGGER THAN A OR B
 sym_weight <- read.csv("data/Symbiont_filter_weight.csv")
 sym_weight$Placement_Code <- sym_weight$Placement
