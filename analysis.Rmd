@@ -20,6 +20,7 @@ library(kableExtra)
 library(PNWColors)
 library(fishualize)
 library(lme4)
+library(lmerTest) #figure out which lme package you need
 library(ggpp)
 library(ggplot2)
 ```
