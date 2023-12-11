@@ -28,7 +28,8 @@ library(ggplot2)
 ```{r load data, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
 sa <- read.csv("data/Surface_Area.csv")
-BW <- read.csv("data/BW_tidy.csv")
+BW <- read.csv("data/BW_tidy.csv") 
+BW <- subset(BW, select=-c(1,4,5)) #remove some erroneous columns
 TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_data.csv") %>% 
   rename(Placement_Code = PLACEMENT)
@@ -39,6 +40,8 @@ FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
 PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") %>% 
   select(!X) %>% 
   select(!X.1)
+PAC_meta$Genotype <- gsub('PR21', 'PA21', PAC_meta$Genotype) #did find a typo in the genotypes here
+
 PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") %>% 
   select(!X)
 meta <- rbind(PAC_meta, PRU_meta) %>% 
@@ -121,8 +124,18 @@ dotchart(FCM_no$sym_FSC.Events_normalized, main = "Normalized Symbionts", groups
 boxplot(FCM_no$sym_FSC.Events_normalized ~ FCM_no$Cage_Uncaged)
 
 ```
+### Collinearity
+need to make a datframe that's long that has all the nutrient metrics and independent variables
+```{r collinearity}
 
+```
 
+### Independence
+```{r independence}
+
+```
+
+### Data Analysis
 FCM Data Analysis:
 ```{r FCM vis, echo=FALSE}
 nut <- read.csv("data/March_nutrients_processed.csv")
@@ -140,6 +153,7 @@ anova_PAC <- aov(sym_FSC.Events_normalized ~ Cage_Uncaged, data = FCM_no %>% fil
 summary(anova_PAC)
 ```
 
+### Models
 ```{r random model, echo=FALSE, warning=FALSE, message=FALSE}
 FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
 all_data <- left_join(FCM, nut, by="CowTagID")  #join them
@@ -156,59 +170,30 @@ max <- all_data %>%
 hist(max$Maximum)
 ```
 
-
 ```{r starting models, warning=FALSE}
-bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
-bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
-all_data <- left_join(bw_no, nut, by="CowTagID")  #join them
-all_data <- drop_na(all_data)
-all_data$Genotype <- as.factor(all_data$Genotype)
-
-bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
+#For models of only caged corals, we are running with Genotype as covariate instead of random effect
+#Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
+bw_m1_caged_PAC <-lm(Percent_Change ~ CVSeasonal + Genotype,
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
+anova(bw_m1_caged_PAC)
 
-bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
+bw_m1_caged_PRU <-lm(Percent_Change ~ CVSeasonal + Genotype,
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
+anova(bw_m1_caged_PRU)
 
+#For models of all corals, we are running with Genotype as a random effect
 bw_m1_PAC <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PAC"))
+anova(bw_m1_PAC)
 
 bw_m1_PRU <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PRU"))
-
-summary(bw_m1_caged_PRU)
-summary(bw_m1_PAC)
+anova(bw_m1_PRU)
 ```
-```{r nyssa aim}
-#do a count and summarize for genotype (to make sure no genotype is only occuring one time)
-subset_ns <-all_data %>%
-  filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
-###WE FOUND IT - YOUR FREAKIN METADATA HAS V2 AS PR21 INSTEAD OF PA21
-#GO FIX THIS
-all_data_mcraimignore <- all_data[!(all_data$Genotype == "PR21"), ]
-all_data_mcraimignore <- all_data[!(all_data$Genotype == "PA21"), ]
-
-all_data_mcraimignore<-all_data_mcraimignore  %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C") %>%
-  droplevels()
-
-bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), data = all_data_mcraimignore)
-anova(bw_m1_caged_PAC)
-summary(bw_m1_caged_PAC)                       
-
-subset_ns2 <- all_data_mcraimignore %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
-
-summary(subset_ns2)
-
-######## Go fix it in core metadata
-#please
-```
-
 
 
 
