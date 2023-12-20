@@ -50,7 +50,7 @@ meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
 
 #make a master data
 data <- left_join(meta, BW, by = join_by(Placement_Code)) %>% 
-  select(!X) %>% 
+  #select(!X) %>% #check that this doesn't need to be here
   left_join(TLE, by = join_by(Placement_Code, Species)) %>% 
   select(!X) %>% 
   left_join(FCM_Join, by = join_by(Placement_Code))
@@ -170,8 +170,24 @@ max <- all_data %>%
 hist(max$Maximum)
 ```
 
-```{r starting models, warning=FALSE}
+Now that we've done our data exploration, let's make the dataframe needed to build some models!
+```{r create all_data, warning=FALSE}
+bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
+bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
+all_data <- left_join(bw_no, nut, by="CowTagID")  #join them
+all_data <- drop_na(all_data)
+all_data$Genotype <- as.factor(all_data$Genotype)
+```
+
+Preliminary models!
+```{r starting models}
 #For models of only caged corals, we are running with Genotype as covariate instead of random effect
+#Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
+bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")) 
+anova(bw_m1_caged_PAC)
+                    
+###
 #Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
 bw_m1_caged_PAC <-lm(Percent_Change ~ CVSeasonal + Genotype,
                   data = all_data %>% 
