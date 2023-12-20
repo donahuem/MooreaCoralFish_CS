@@ -170,7 +170,7 @@ max <- all_data %>%
 hist(max$Maximum)
 ```
 
-Now that we've done our data exploration, let's make the dataframe needed to build some models!
+Now that we've done our data exploration, let's make the data frame needed to build some models!
 ```{r create all_data, warning=FALSE}
 bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
 bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
