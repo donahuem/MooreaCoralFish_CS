@@ -23,6 +23,8 @@ library(lme4)
 library(lmerTest) #figure out which lme package you need
 library(ggpp)
 library(ggplot2)
+library(GGally)
+library(ggeffects)
 ```
 
 ```{r load data, echo=FALSE}
@@ -121,8 +123,17 @@ ggplot(FCM_no, aes(x = Cage_Uncaged, y = FSC.Events_normalized, fill = Species))
 
 ### Collinearity
 need to make a datframe that's long that has all the nutrient metrics and independent variables
+Here's the thing: we KNOW the nutrients are collinear
+For example, here's a pairs plot for the maximum of all the nutrient values:
 ```{r collinearity}
+nut_wide <- pivot_wider(
+  data = nut,
+  names_from = Parameters,
+  values_from =3:9,
+  names_glue = "{.value}_{Parameters}"
+)
 
+ggpairs(nut, columns = 2:8,progress = FALSE)
 ```
 
 ### Independence
@@ -139,24 +150,40 @@ summary(anova_PRU)
 anova_PAC <- aov(FSC.Events_normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Pocillopora_acuta"))
 summary(anova_PAC)
 ```
-
-
-
-### Models
-```{r random model, echo=FALSE, warning=FALSE, message=FALSE}
+```{r}
 FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
 all_data <- left_join(FCM, nut, by="CowTagID")  #join them
 all_data <- drop_na(all_data)
+gg_data <- all_data %>% 
+  filter(Parameters == "Phosphate_umolL")
+```
 
-m1 <- lm(sym_FSC.Events ~ log(Maximum), data= all_data %>%
-           filter(Parameters=="Silicate_umolL"))
-anova(m1)
-summary(m1)
+```{r}
+ggplot(gg_data, aes(x = CVSeasonal, y = FSC.Events_normalized,)) +
+  geom_point(aes(color=Cage_Uncaged)) +  # Add points
+  scale_color_fish_d(option = "Coryphaena_hippurus")+
+  labs(title = "Number of Symbionts vs Phosphate Variability",
+       x = "CV Phosphate",
+       y = "Symbionts") +
+  facet_wrap(~Species, scales = "free_y")
+```
 
+### Models
+
+```{r response variable}
 max <- all_data %>% 
        filter(Parameters=="Silicate_umolL")
 
 hist(max$Maximum)
+hist(log(max$Maximum))
+```
+
+```{r first symbiont model, echo=FALSE, warning=FALSE, message=FALSE}
+m1 <- lm(FSC.Events_normalized ~ log(Maximum)*Cage_Uncaged, 
+         data= all_data %>%
+           filter(Parameters=="Silicate_umolL", Species=="Porites_rus"))
+anova(m1)
+summary(m1)
 ```
 
 Now that we've done our data exploration, let's make the data frame needed to build some models!
