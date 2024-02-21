@@ -5,6 +5,7 @@
 
 ##### LOAD LIBRARIES #####
 library(here)
+library(readr)
 library(tidyverse)
 library(ggmap)
 library(sf)
@@ -23,6 +24,7 @@ alphatag <- read_csv(here("data", "CowTag_to_AlphaTag.csv")) #I changed this to 
 meta <- read_csv(here("data", "DB_Full_Metadata.csv")) %>%
   left_join(alphatag) %>%
   filter(Location == "Varari")
+
 #THIS IS GOING TO MAKE THE ALLCHEM JUST HAVE THE CVSEASONAL OF ALL THE NUTRIENTS FROM THE WET SEASON
 #WE NEED TO DETERMINE IF THIS IS WHAT I WANT TO REPRESENT IN THIS FIGURE
 allchem <- read_csv(here("Data", "March_nutrients_processed.csv")) %>%

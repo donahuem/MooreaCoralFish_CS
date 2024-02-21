@@ -12,6 +12,7 @@ library(readr)
 FCM <- read.csv(here("Data","CS_FCM_Plate_3_1.csv"))
 meta <-read.csv(here("Data","FCM_Meta.csv"))
 sa <- read.csv(here("Data","Surface_Area.csv"))
+dry_wt <- read.csv(here("Data", "Wet_Dry_Weight.csv"))
 #FCM <- read.csv("/Users/calliestephenson/Downloads/CS_FCM_Plate_3_1.csv")
 #meta <- read.csv("/Users/calliestephenson/Downloads/FCM_Meta.csv")
 
@@ -42,8 +43,10 @@ FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
 
 sa$PLACEMENT <- sa$Placement_Code
 FCM <- merge(FCM, sa[, c('PLACEMENT', 'Surface_Area')], by = 'PLACEMENT') #make a joining variable
+dry_wt$PLACEMENT <- dry_wt$Placement
+FCM <- merge(FCM, dry_wt[c('PLACEMENT','Approximate.Dry.Weight.of.Whole.Sample')])
 
-
+FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
 #GREAT! Now we have the number of cells in each sample
   
 #upscale it to the full sample
@@ -52,14 +55,16 @@ FCM <- merge(FCM, sa[, c('PLACEMENT', 'Surface_Area')], by = 'PLACEMENT') #make 
 #This was then diluted to make a 150 uL sample that was run fast (60 uL/min) on the flow cytometer
 #From this, we only used the last 120 ul (cut out 30 seconds at the beginning which is 30 uL)
 #Assuming the 8 second mix appropriately homogenized everything, this means we used 120/150 of the sample (aka 80% of the sample)
-#THUS, we officially only used (0.8)*(28) ul in the sample, which is 22.4 uL
-FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
-#These events are per 22.4 uL, so if we divide by 22.4 we will get the actual number of events per ul
 FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / (28*(120/150)) #28 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
 #Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
 FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
+
+
 #Now, normalizing that to the amount of live surface area that I airbrushed per coral:
-FCM$FSC.Events_normalized <- FCM$FSC.Events.per.slurry / FCM$Surface_Area 
+FCM$FSC.Events_per_cm_2 <- FCM$FSC.Events.per.slurry / FCM$Surface_Area 
+
+#Now, normalizing to the dry weight of the coral sample
+FCM$FSC.Events_per_g_dry_weight <- FCM$FSC.Events.per.slurry / FCM$Approximate.Dry.Weight.of.Whole.Sample
 
 write_csv(FCM, here("Data","FCM_Tidy.csv"))
 

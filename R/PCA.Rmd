@@ -53,9 +53,11 @@ for (df in list_of_dataframes) {
   print(summary(pca))
   print(loadings(pca))
   biplot_data <- biplot(pca, col = c('grey', 'blue'))
-  biplots[[length(biplots) + 1]] <- biplot_data
+  biplots[length(biplots)+1] <- print(biplot_data)
 }
 
 grid.arrange(grobs = biplots)
-
 ```
+
+
+
