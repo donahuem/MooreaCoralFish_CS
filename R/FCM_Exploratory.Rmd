@@ -1,0 +1,148 @@
+---
+title: "FCM Exploratory"
+output: html_document
+date: "2024-02-14"
+---
+```{r load packages, echo=FALSE, message=FALSE}
+library(dplyr)
+library(readr)
+library(here)
+library(fishualize)
+library(ggplot2)
+library(GGally)
+library(ggeffects)
+library(tidyr)
+```
+
+```{r}
+#setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
+FCM <- read.csv(here("Data","CS_FCM_Plate_3_1.csv"))
+meta <-read.csv(here("Data","FCM_Meta.csv"))
+sa <- read.csv(here("Data","Surface_Area.csv"))
+dry_wt <- read.csv(here("Data", "Wet_Dry_Weight.csv"))
+
+meta <- meta %>%
+  drop_na(SLURRY.LABEL) %>%
+  mutate(Tube.Name.=sprintf("%02d-Well-%s%d", PLATE, ROW, COLUMN))
+
+merged_FCM <- meta %>%
+  left_join(FCM, by = "Tube.Name.") %>%
+  filter(GOOD.SAMPLE)
+
+FCM_data <- merged_FCM[,c(1,2,6,7,13,17,21)]
+
+PAC <- read.csv(here("Data", "PAC_Coral_Codes.csv"))%>% 
+  select(!X) %>% 
+  select(!X.1) %>% 
+  rename("PLACEMENT" = "Placement_Code")
+PRU <- read.csv(here("Data", "PRU_Coral_Codes.csv"))%>% 
+  rename("PLACEMENT" = "Placement_Code") %>% 
+  select(!X)
+
+codes <- rbind(PAC[,c(2,3,4,7,8)],PRU[,c(2,3,4,7,8)])
+
+FCM <- left_join(FCM_data, codes)
+FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
+
+sa$PLACEMENT <- sa$Placement_Code
+FCM <- merge(FCM, sa[, c('PLACEMENT', 'Surface_Area')], by = 'PLACEMENT') #make a joining variable
+dry_wt$PLACEMENT <- dry_wt$Placement
+FCM <- merge(FCM, dry_wt[c('PLACEMENT','Approximate.Dry.Weight.of.Whole.Sample')])
+
+FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
+
+```
+
+GREAT! Now we have the number of cells in each sample, time to upscale it to the full sample. 
+
+From the slurry I took 1 ml for FCM, from that ml I took 28 ul from the original slurry volume. This was then diluted to make a 150 uL sample that was run fast (60 uL/min) on the flow cytometer. We only used the last 120 ul (cut out 30 seconds at the beginning which is 30 uL). Assuming the 8 second mix appropriately homogenized everything, this means we used 120/150 of the sample (aka 80% of the sample). 
+```{r}
+FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / (28*(120/150)) #28 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
+#Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
+FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
+
+#Now, normalizing that to the amount of live surface area that I airbrushed per coral:
+FCM$FSC.Events_per_cm_2 <- FCM$FSC.Events.per.slurry / FCM$Surface_Area 
+
+#Now, normalizing to the dry weight of the coral sample
+FCM$FSC.Events_per_g_dry_weight <- FCM$FSC.Events.per.slurry / FCM$Approximate.Dry.Weight.of.Whole.Sample
+
+#write_csv(FCM, here("Data","FCM_Tidy.csv"))
+```
+
+
+```{r}
+FCM <- read.csv(here("Data", "FCM_tidy.csv")) %>% 
+  rename(Placement_Code = PLACEMENT)
+```
+
+
+```{r}
+FCM <- FCM[complete.cases(FCM[, "Cage_Uncaged"]), ] #Remove T0 samples by only including rows where the "Cage_Uncaged" exists
+FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged) 
+dotchart(FCM$FSC.Events_per_cm_2, main = "Symbionts", groups = FCM$Cage_Uncaged)
+```
+Fig 1. Number of symbionts by coral surface area (Front scatter events per $cm^2$) 
+
+```{r}
+ggplot(FCM, aes(x = Cage_Uncaged, y = FSC.Events_per_cm_2, fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
+  facet_wrap(~Species)
+```
+
+Fig 2. Number of symbionts by coral surface area (Front scatter events per $cm^2$) 
+
+#### Same figures but per g dry weight
+
+```{r}
+dotchart(FCM$FSC.Events_per_g_dry_weight, main = "Symbionts", groups = FCM$Cage_Uncaged)
+```
+
+Fig 3. Number of symbionts by coral surface area (Front scatter events per gram dry slurry weight)
+
+```{r}
+ggplot(FCM, aes(x = Cage_Uncaged, y = FSC.Events_per_g_dry_weight, fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
+  facet_wrap(~Species)
+```
+
+Fig 4. Number of symbionts by coral surface area (Front scatter events per gram dry slurry weight)
+
+### Example ANCOVA 
+
+This is by the CV of Phosphate in the wet season. A pattern here would suggest the maximum amount of phosphate the coral experienced at each station contributed to the number of symbionts in the corals. I used the number of symbionts per dry weight here, because we are using one perforate and one imperforate coral. 
+
+```{r warning=FALSE}
+nut <- read.csv(here("Data","March_nutrients_processed.csv"))
+FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
+all_data <- left_join(FCM, nut, by="CowTagID")  #join them
+all_data <- drop_na(all_data)
+gg_data <- all_data %>% 
+  filter(Parameters == "Phosphate_umolL")
+```
+
+
+```{r}
+m1 <- lm(FSC.Events_per_g_dry_weight ~ log(Maximum)*Cage_Uncaged, 
+         data= all_data %>%
+           filter(Parameters=="Silicate_umolL", Species=="Porites_rus"))
+anova(m1)
+summary(m1)
+```
+
+
+```{r}
+ggplot(gg_data, aes(x = Maximum, y = FSC.Events_per_g_dry_weight,)) +
+  geom_point(aes(color=Cage_Uncaged)) +  # Add points
+  scale_color_fish_d(option = "Coryphaena_hippurus")+
+  labs(title = "Number of Symbionts vs Phosphate Variability",
+       x = "Maximum Amount of Phosphate",
+       y = "Symbionts") +
+  facet_wrap(~Species, scales = "free_y")
+```
+
+

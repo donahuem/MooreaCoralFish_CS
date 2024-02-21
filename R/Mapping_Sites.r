@@ -19,7 +19,6 @@ library(PNWColors)
 library(patchwork)
 
 ##### READ IN DATA #####
-
 alphatag <- read_csv(here("data", "CowTag_to_AlphaTag.csv")) #I changed this to have V13
 meta <- read_csv(here("data", "DB_Full_Metadata.csv")) %>%
   left_join(alphatag) %>%

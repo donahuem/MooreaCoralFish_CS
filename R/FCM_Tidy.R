@@ -55,9 +55,9 @@ FCM <- merge(FCM, sa[, c('PLACEMENT', 'Surface_Area')], by = 'PLACEMENT') #make 
 #THUS, we officially only used (0.8)*(28) ul in the sample, which is 22.4 uL
 FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
 #These events are per 22.4 uL, so if we divide by 22.4 we will get the actual number of events per ul
-FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / 22.4
+FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / (28*(120/150)) #28 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
 #Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
-FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000
+FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
 #Now, normalizing that to the amount of live surface area that I airbrushed per coral:
 FCM$FSC.Events_normalized <- FCM$FSC.Events.per.slurry / FCM$Surface_Area 
 

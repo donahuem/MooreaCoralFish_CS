@@ -1,0 +1,61 @@
+
+```{r packages}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(fishualize)
+library(GGally) #function ggpairs()
+library(arm)
+library(car)
+library(MASS) #model glm.nb for negbin
+library(ggeffects)
+library(gridExtra) #worked when cowplot failed me
+library(effects)
+library(grid) #for as.grob
+```
+
+```{r tidy data}
+nut <- read.csv("data/March_nutrients_processed.csv")
+
+nut_wide <- pivot_wider(
+  data = nut,
+  names_from = Parameters,
+  values_from =3:9,
+  names_glue = "{.value}_{Parameters}"
+)
+maximum_nut <- nut_wide[, grep("Maximum", names(nut_wide))]
+minimum_nut <- nut_wide[, grep("Minimum", names(nut_wide))]
+mean_nut <- nut_wide[, grep("Mean", names(nut_wide))]
+cv_nut <- nut_wide[, grep("CV", names(nut_wide))]
+```
+
+
+###CV PCA
+```{r}
+pca = princomp(cv_nut, cor=TRUE)
+summary(pca)
+loadings(pca)
+```
+
+```{r}
+biplot(pca, col = c('grey', 'blue'))
+```
+
+
+
+```{r}
+biplots <- list()
+list_of_dataframes <- list(maximum_nut, minimum_nut, mean_nut, cv_nut)
+
+# Iterate over each dataframe
+for (df in list_of_dataframes) {
+  pca <- princomp(df, cor = TRUE)
+  print(summary(pca))
+  print(loadings(pca))
+  biplot_data <- biplot(pca, col = c('grey', 'blue'))
+  biplots[[length(biplots) + 1]] <- biplot_data
+}
+
+grid.arrange(grobs = biplots)
+
+```
