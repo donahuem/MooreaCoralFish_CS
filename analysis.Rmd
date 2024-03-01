@@ -25,6 +25,7 @@ library(ggpp)
 library(ggplot2)
 library(GGally)
 library(ggeffects)
+library(arm) #discrete hist
 ```
 
 ```{r load data, echo=FALSE}
@@ -35,26 +36,50 @@ BW <- subset(BW, select=-c(1,4,5)) #remove some erroneous columns
 TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_tidy.csv") %>% 
   rename(Placement_Code = PLACEMENT)
+shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
 
 
 #meta takes a little massaging
-PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") %>% 
-  select(!X) %>% 
-  select(!X.1)
+PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") 
+PAC_meta <- PAC_meta[,c(3:10)]
+PAC_meta$Species <- "Pocillopora acuta"
 PAC_meta$Genotype <- gsub('PR21', 'PA21', PAC_meta$Genotype) #did find a typo in the genotypes here
 
-PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") %>% 
-  select(!X)
-meta <- rbind(PAC_meta, PRU_meta) %>% 
-  select(!Species)
+PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
+PRU_meta <- PRU_meta[,c(2:9)]
+PRU_meta$Species <- "Porites rus"
+
+meta <- rbind(PAC_meta, PRU_meta)
 meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
 
-#make a master data
-data <- left_join(meta, BW, by = join_by(Placement_Code)) %>% 
+#make a master response variable data sheet
+data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5)], by = join_by(Placement_Code)) %>% 
   #select(!X) %>% #check that this doesn't need to be here
-  left_join(TLE, by = join_by(Placement_Code, Species)) %>% 
-  select(!X) %>% 
-  left_join(FCM, by = join_by(Placement_Code))
+  left_join(FCM[,c(1,15,17)], by = join_by(Placement_Code)) %>% 
+  left_join(TLE[,c(3:7)], by = join_by(Placement_Code)) 
+data$CowTagID <- paste0("V",data$Pin_Number)
+
+PRU_response_data <- data %>% 
+  filter(Species == "Porites rus")
+
+PAC_response_data <- data %>% 
+  filter(Species == "Pocillopora acuta")
+```
+
+```{r}
+#combine nutrient data and shore distance for a master explanatory variable data sheet
+explanatory <- left_join(nut, shore_dist[,c(2:3)], by = join_by(CowTagID))
+```
+
+```{r warning=FALSE}
+#now make an all data that has both explanatory and response variables:
+all_data <- left_join(data, explanatory, by = join_by(CowTagID))
+#suppress warnings because there will be a many-to-many relationship between x and y
+all_PAC_data <- all_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+all_PRU_data <- all_data %>% 
+  filter(Species == "Porites rus")
 ```
 
 ### Data Exploration:
@@ -62,6 +87,27 @@ Data exploration focuses on the following points:
 1. Outliers
 2. Collinearity
 3. Independence (Relationships between response and explanatory variables) 
+
+```{r fig.width=10, fig.height=10}
+par(mfrow = c(4,4), oma=c(1,1,3,1))
+hist(PAC_response_data$Change_Over_Area, main="Change Over Area", col="lightblue", xlab="Change_Over_Area")
+hist_columns <- c(7:13)
+for (i in 1:length(hist_columns)) {
+  hist(PAC_response_data[, hist_columns[i]], col="lightblue", 
+       main = paste("PAC", colnames(PAC_response_data)[hist_columns[i]], sep=" - "),
+       xlab=colnames(data)[hist_columns[i]])
+}
+hist(PRU_response_data$Change_Over_Area, main="Change Over Area", col="darkolivegreen3", xlab="Change_Over_Area")
+for (i in 1:length(hist_columns)) {
+  hist(PRU_response_data[, hist_columns[i]], col="darkolivegreen3", 
+       main = paste("PRU", colnames(PRU_response_data)[hist_columns[i]], sep=" - "),
+       xlab=colnames(data)[hist_columns[i]])
+}
+main_title <- "Data Exploration"
+title(main = main_title, outer = TRUE)
+```
+
+Ok so FSC.Events are both pretty right-skewed. We normally log10 transform these.
 
 #### Look for Outliers:
 Buoyant Weight
@@ -71,11 +117,16 @@ It looks like that 13 A is really off. We know it broke, so I am removing it and
 BW <- merge(BW, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
 BW_no <- BW[!(BW$Placement_Code == "PRU V13 A"), ]
 ```
+
+Now making a plot to look at outliers:
+
 ```{r BW Outlier Plot, echo=FALSE}
 par(mar = c(2.5, 1, 1, 1) + 0.1)
 layout(matrix(1:2, nrow = 2), heights = c(3, 3))
-dotchart(BW$Change_Over_Area, main = "∆BW", groups = BW$Cage_Uncaged)
-dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", groups = BW_no$Cage_Uncaged)
+dotchart(BW$Change_Over_Area, main = "∆BW", 
+         groups = BW$Cage_Uncaged)
+dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", 
+         groups = BW_no$Cage_Uncaged)
 layout(1)
 ```
 I removed PRU V13 A placement because this was broken in the field, creating a large negative change in buoyant weight. 
@@ -107,34 +158,90 @@ FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
 FCM_no <- FCM[!(FCM$Placement_Code == "PRU V17 C"), ]
 par(mar = c(2.5, 1, 1, 1) + 0.1)
 layout(matrix(1:2, nrow = 2), heights = c(3, 3))
-dotchart(FCM$FSC.Events_normalized, main = "Symbionts", groups = FCM$Cage_Uncaged)
-dotchart(FCM_no$FSC.Events_normalized, main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
+dotchart(FCM$FSC.Events_per_cm_2, main = "Symbionts", groups = FCM$Cage_Uncaged)
+dotchart(FCM_no$FSC.Events_per_cm_2, main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
 layout(1)
 ```
 Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as much as needed to the sample, but for now I will omit in my analyses (using dataframe FCM_no for "no outliers")
 
-```{r}
-ggplot(FCM_no, aes(x = Cage_Uncaged, y = FSC.Events_normalized, fill = Species)) +
+```{r FCM Violin Plot}
+ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
-  facet_wrap(~Species)
+  facet_wrap(~Species)+
+  labs(title = expression(paste("Symbionts per ", cm^2, " by caging treatment")))+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+same but other normalization:
+```{r}
+ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1) +
+  facet_wrap(~Species)+
+  labs(title = "Symbionts per g dry weight by caging treatment")+
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ### Collinearity
-need to make a datframe that's long that has all the nutrient metrics and independent variables
+need to make a dataframe that's long that has all the nutrient metrics and independent variables
 Here's the thing: we KNOW the nutrients are collinear
 For example, here's a pairs plot for the maximum of all the nutrient values:
-```{r collinearity}
+```{r nutrient collinearity, message=FALSE}
 nut_wide <- pivot_wider(
-  data = nut,
+  data = explanatory,
   names_from = Parameters,
-  values_from =3:9,
+  values_from =3:7,
   names_glue = "{.value}_{Parameters}"
 )
-
 ggpairs(nut, columns = 2:8,progress = FALSE)
 ```
+#### PCA
+I want to start exploring PCA's to explain the nutrient dynamics:
+```{r PCA Max}
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
+                                     !grepl("Salinity|Temperature|pH", names(nut_wide))]
+minimum_columns <- names(nut_wide)[grepl("Minimum_", names(nut_wide)) & 
+                                     grepl("Salinity|Temperature|pH", names(nut_wide))]
+
+pca.max.data <- na.omit(nut_wide[, c(maximum_columns, minimum_columns)]) #keeping V13 in this ex
+pca.max = princomp(pca.max.data, cor=TRUE)
+summary(pca.max)
+loadings(pca.max)
+```
+These look nice!!!! let's see what the biplot looks like:
+
+```{r}
+biplot(pca.max, col = c('grey', 'blue'))
+```
+So, not sure why ammonia is so far out there, but this looks kinda nice! 
+
+It looks like PC1 is really an axis of SGD influence, and that it can explain 92% of the variation of these nutrient dynamics. If things are interacting with PC1, they're probably doing so due to SGD influence. 
+
+PC2 is mostly from Ammmonia, with some influence of pH and temp. I'm not quite sure how to interpret that yet.
+```{r PCA Max axes into dataset, warning=FALSE}
+nut_wide$pc1 = pca.max$scores[,1] #what's this data's score on pc1 axis
+nut_wide$pc2 = pca.max$scores[,2] #what's this data's score on pc2 axis
+
+#really, i want it back in explanatory:
+explanatory2 <- pivot_longer(
+  data = nut_wide,
+  cols = -c(CowTagID, lat, lon, shore_dist_m, pc1), # Specifying non-parameter columns
+  names_to = c(".value", "Parameter"), 
+  names_pattern = "^(.*?)_(.*)$"
+)
+
+#wide data
+all_data_pca <- left_join(data, explanatory2, by = join_by(CowTagID)) #supress warning bc this has many-to-many relationship
+pca_data_wide <- left_join(nut_wide, data, by = join_by(CowTagID))
+```
+
+Should I incorporate shore dist? Shore dist might be linear with these nutrients, if it isn't, it's better to put into the models as a separate variable.
+```{r PCA vs Shore Dist, warning=FALSE}
+ggpairs(na.omit(nut_wide), columns = 43:45,progress = FALSE)
+```
+Not going to include in PCA, looks like it does its own thing, and can be built into models separately.
 
 ### Independence
 ```{r independence}
@@ -144,77 +251,92 @@ ggpairs(nut, columns = 2:8,progress = FALSE)
 ### Data Analysis
 FCM Data Analysis:
 ```{r FCM vis, echo=FALSE}
-anova_PRU <- aov(FSC.Events_normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Porites_rus"))
+anova_PRU <- aov(FSC.Events_per_cm_2 ~ Cage_Uncaged, 
+                 data = FCM_no %>% 
+                   filter(Species=="Porites_rus"))
 summary(anova_PRU)
 
-anova_PAC <- aov(FSC.Events_normalized ~ Cage_Uncaged, data = FCM_no %>% filter(Species=="Pocillopora_acuta"))
-summary(anova_PAC)
-```
-```{r}
-FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable
-all_data <- left_join(FCM, nut, by="CowTagID")  #join them
-all_data <- drop_na(all_data)
-gg_data <- all_data %>% 
-  filter(Parameters == "Phosphate_umolL")
-```
+#caging did not effect P. rus
 
-```{r}
-ggplot(gg_data, aes(x = CVSeasonal, y = FSC.Events_normalized,)) +
-  geom_point(aes(color=Cage_Uncaged)) +  # Add points
-  scale_color_fish_d(option = "Coryphaena_hippurus")+
-  labs(title = "Number of Symbionts vs Phosphate Variability",
-       x = "CV Phosphate",
-       y = "Symbionts") +
-  facet_wrap(~Species, scales = "free_y")
+anova_PAC <- aov(FSC.Events_per_cm_2 ~ Cage_Uncaged, 
+                 data = FCM_no %>% 
+                   filter(Species=="Pocillopora_acuta"))
+summary(anova_PAC)
+#caging did not effect symbionts in P. acuta
+#this I have a bit of a hard time believing 
 ```
 
 ### Models
-
-```{r response variable}
-max <- all_data %>% 
-       filter(Parameters=="Silicate_umolL")
-
-hist(max$Maximum)
-hist(log(max$Maximum))
+```{r}
+hist(all_data_pca$pc1)
 ```
 
-```{r first symbiont model, echo=FALSE, warning=FALSE, message=FALSE}
-m1 <- lm(FSC.Events_normalized ~ log(Maximum)*Cage_Uncaged, 
-         data= all_data %>%
-           filter(Parameters=="Silicate_umolL", Species=="Porites_rus"))
-anova(m1)
-summary(m1)
-```
 
 Now that we've done our data exploration, let's make the data frame needed to build some models!
-```{r create all_data, warning=FALSE}
-bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
-bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
-bw_sym_no <- left_join(bw_no, FCM_no[,c('Placement_Code','sym_FSC.Events_normalized')],
-                       by="Placement_Code")
 
-all_data <- left_join(bw_sym_no, nut, by="CowTagID")  #join them
-all_data$Genotype <- as.factor(all_data$Genotype)
-all_data$Normalized_Symbiont_Counts <- all_data$sym_FSC.Events_normalized
-```
-
-Preliminary models!
-```{r starting models}
+```{r starting models with megan}
 #For models of only caged corals, we are running with Genotype as covariate instead of random effect
 #Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
 #for example, see how this is singular:
-bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")) 
+
+bw_m1_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "Pocillopora acuta" & Cage_Uncaged == "C")) 
 anova(bw_m1_caged_PAC)
-                    
+summary(bw_m1_caged_PAC)
+
+##plots with megan
+ggplot(all_PAC_data) +
+  geom_point(data = subset(all_PAC_data, Cage_Uncaged == "C"),
+             aes(x = Genotype, y = Percent_Change, color = shore_dist_m)) +
+  scale_color_fish(option = "Coryphaena_hippurus")
+#this shore distance looks like it could be a trend
+
+#variance components analysis within genotype and between genotype variance
+#looking at all the variance in the data, looking at the grand mean vs. the mean for the random effects
+#how much is between vs within genotype variance
+bw_m1_caged_PRU <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "Porites rus" & Cage_Uncaged == "C")) 
+anova(bw_m1_caged_PRU)
+summary(bw_m1_caged_PRU)
+
+ggplot(all_PRU_data) +
+  geom_point(data = subset(all_PRU_data, Cage_Uncaged == "C"),
+             aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
+  scale_color_fish(option = "Coryphaena_hippurus")
+```
+```{r WHY YOU GET SINGULARITY IN ACUTA, eval = FALSE, echo=FALSE}
+dataPAC = all_data %>%
+  filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
+
+dataPRU = all_data %>% 
+  filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C")
+
+ggplot(dataPAC) +
+  geom_point(aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
+  scale_color_fish(option = "Coryphaena_hippurus")
+#NEARLY NO VARIATION ATTRIBUTABLE TO GENOTYPE
+
+ggplot(dataPRU) +
+  geom_point(aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
+  scale_color_fish(option = "Coryphaena_hippurus")
+
+#Q from MJD for KE:
+#if you get an estimate of 0 for your random effect what do you do
+#do you keep bc the structure is important
+#or do you drop because the model becomes simpler
+
+#To move forward: drop the random effect for PAC models.
+```
+
+```{r starting models, eval = FALSE, echo=FALSE}
 ###
 #Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
-bw_m1_caged_PAC <-lm(Percent_Change ~ CVSeasonal + Genotype,
+bw_m1_caged_PAC <-lm(Percent_Change ~ CVSeasonal + shore_dist_m,
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
 anova(bw_m1_caged_PAC)
 
-bw_m1_caged_PRU <-lm(Percent_Change ~ CVSeasonal + Genotype,
+bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + shore_dist_m + (1 | Genotype),
                   data = all_data %>% 
                     filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
 anova(bw_m1_caged_PRU)
@@ -232,7 +354,7 @@ anova(bw_m1_PRU)
 summary(bw_m1_PRU)
 ```
 Same models as before, but now with silicate instead, because the range in SiO32- was an order of magnitude higher on the reef than salinity allowing for a higher signal to noise ratio. I also used maximum silicate, as it is more indicative of the maximum amount of groundwater experienced
-```{r starting models silicate}
+```{r starting models silicate, eval = FALSE, echo=FALSE}
 #For models of only caged corals, we are running with Genotype as covariate instead of random effect
 #Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
 #for example, see how this is singular:
@@ -274,7 +396,7 @@ summary(bw_m1_PRU)
 This also only sees a correlation between all (not just caged) change in buoyant weight for PRU. PAC is not significant.
 
 Now let's see those same models with symbiont counts
-```{r starting models symb}
+```{r starting models symb, eval = FALSE, echo=FALSE}
 #again running with Genotype as covariate when only 
 symb_m1_caged_PAC <-lm(Normalized_Symbiont_Counts ~ CVSeasonal + Genotype,
                   data = all_data %>% 
@@ -302,7 +424,7 @@ Nothing significant there
 
 
 IGNORE THESE PLOTS:
-```{r proposal plots all bad very bad}
+```{r proposal plots all bad very bad, eval = FALSE, echo=FALSE}
 gg_data <- all_data %>% 
   filter(Parameters == "Salinity")
 
@@ -343,7 +465,7 @@ ggplot(gg_data, aes(x = CVSeasonal, y = Change_Over_Area)) +
 
 ```
 
-```{r more symbiont in caged or no}
+```{r more symbiont in caged or no, eval = FALSE, echo=FALSE}
 #IS C MORE LIKELY TO HAVE BEEN BIGGER THAN A OR B
 sym_weight <- read.csv("data/Symbiont_filter_weight.csv")
 sym_weight$Placement_Code <- sym_weight$Placement

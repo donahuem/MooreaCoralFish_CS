@@ -12,25 +12,38 @@ library(ggplot2)
 library(GGally)
 library(ggeffects)
 library(tidyr)
+library(car)
+library(GGally) #for effects plot that uses the baseline population as 0
+library(lme4)
 ```
 
-```{r}
+```{r input and tidy data, message=FALSE}
 #setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
 FCM <- read.csv(here("Data","CS_FCM_Plate_3_1.csv"))
-meta <-read.csv(here("Data","FCM_Meta.csv"))
+FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events) #don't come in as numeric for some reason?
+metafcm <-read.csv(here("Data","FCM_Meta.csv"))
 sa <- read.csv(here("Data","Surface_Area.csv"))
 dry_wt <- read.csv(here("Data", "Wet_Dry_Weight.csv"))
+Edmunds_data <- read.csv(here("Data", "Symbiont_data_published.csv"))
+coral_trait_database <- read.csv(here("Data", "coral_trait_database_data.csv"))
+Wes_data <- read.csv(here("Data", "Wes_sym_data.csv"))
+Fox_data <- read.csv(here("Data","Fox_2021_Phys_master_Dryad.csv"))
+Huffmyer_data <- read.csv(here("Data", "Huffmyer_AdultCoral_SymbiontCellCounts.csv"))
+nut <- read.csv(here("Data","March_nutrients_processed.csv"))
 
-meta <- meta %>%
+
+#metafcm fixes the FCM dataframe so that is it only the good samples
+metafcm <- metafcm %>%
   drop_na(SLURRY.LABEL) %>%
-  mutate(Tube.Name.=sprintf("%02d-Well-%s%d", PLATE, ROW, COLUMN))
-
-merged_FCM <- meta %>%
+  mutate(Tube.Name.=sprintf("%02d-Well-%s%d", PLATE, ROW, COLUMN)) #using the sprintf() function to format a string based on a template. %02d is a placeholder for an integer (d), with a width of 2 characters, and it will be filled with the value of PLATE. -Well- is a literal string -Well- %s is a placeholder for a string (s), and it will be filled with the value of ROW. %d is a placeholder for an integer (d), and it will be filled with the value of COLUMN.
+merged_FCM <- metafcm %>%
   left_join(FCM, by = "Tube.Name.") %>%
   filter(GOOD.SAMPLE)
 
+#take only the columns we want
 FCM_data <- merged_FCM[,c(1,2,6,7,13,17,21)]
 
+#kind of annoying way I've set up these to match with sample names:
 PAC <- read.csv(here("Data", "PAC_Coral_Codes.csv"))%>% 
   select(!X) %>% 
   select(!X.1) %>% 
@@ -38,28 +51,37 @@ PAC <- read.csv(here("Data", "PAC_Coral_Codes.csv"))%>%
 PRU <- read.csv(here("Data", "PRU_Coral_Codes.csv"))%>% 
   rename("PLACEMENT" = "Placement_Code") %>% 
   select(!X)
-
 codes <- rbind(PAC[,c(2,3,4,7,8)],PRU[,c(2,3,4,7,8)])
 
+#now to put the FCM with the coral sample names used everywhere:
 FCM <- left_join(FCM_data, codes)
 FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
 
+#joining with surface area for normalizing
 sa$PLACEMENT <- sa$Placement_Code
 FCM <- merge(FCM, sa[, c('PLACEMENT', 'Surface_Area')], by = 'PLACEMENT') #make a joining variable
 dry_wt$PLACEMENT <- dry_wt$Placement
 FCM <- merge(FCM, dry_wt[c('PLACEMENT','Approximate.Dry.Weight.of.Whole.Sample')])
 
-FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
+#These columns are to show that the FCM-generated events per ul is actually divided by total (150) volume, not the one to include
+FCM$FSC.Events.per.sample.ul <- FCM$sym_FSC.Events / ((120))
+FCM$Events.per.total.sample.ul <- FCM$sym_FSC.Events / 150
 
+#So really, the question remains if the FSC.Events is only the 'include' portion, or if the FSC.Events is from the total sample
+#Because why else is the machine dividing the FSC.Events by 150 (the total sample volume) to get the sym_FSC.Events.μL.V.
+#Wes says that it is ONLY in the include gate
 ```
 
 GREAT! Now we have the number of cells in each sample, time to upscale it to the full sample. 
 
 From the slurry I took 1 ml for FCM, from that ml I took 28 ul from the original slurry volume. This was then diluted to make a 150 uL sample that was run fast (60 uL/min) on the flow cytometer. We only used the last 120 ul (cut out 30 seconds at the beginning which is 30 uL). Assuming the 8 second mix appropriately homogenized everything, this means we used 120/150 of the sample (aka 80% of the sample). 
-```{r}
-FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / (28*(120/150)) #28 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
+```{r normalize FCM data}
+amount_of_coral_slurry_in_the_include_gate <- (28*(120/150)) #28 ul of slurry, 120 seconds/ul go in the include gate of the 150 seconds/ul total that were ran for each sample
+
+FCM$FSC.Events.per.coralsample.ul <- FCM$sym_FSC.Events / amount_of_coral_slurry_in_the_include_gate
+
 #Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
-FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
+FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.coralsample.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
 
 #Now, normalizing that to the amount of live surface area that I airbrushed per coral:
 FCM$FSC.Events_per_cm_2 <- FCM$FSC.Events.per.slurry / FCM$Surface_Area 
@@ -70,49 +92,148 @@ FCM$FSC.Events_per_g_dry_weight <- FCM$FSC.Events.per.slurry / FCM$Approximate.D
 #write_csv(FCM, here("Data","FCM_Tidy.csv"))
 ```
 
-
-```{r}
-FCM <- read.csv(here("Data", "FCM_tidy.csv")) %>% 
-  rename(Placement_Code = PLACEMENT)
+Ok, now that it is normalized, we can combine it with nutrient data
+```{r merge fcm and nut, warning=FALSE}
+#suppressed the warning "Detected an unexpected many-to-many relationship between `x` and `y`" because we have a lot of the nutrient metrics for each pin
+FCM$CowTagID <- paste0("V",FCM$Pin_Number) #make a joining variable for this and nutrient data
+all_data <- left_join(FCM, nut, by="CowTagID")  #join them
+all_data <- drop_na(all_data)
 ```
 
+#### Data Exploration:
 
+Looking for any outliers
 ```{r}
-FCM <- FCM[complete.cases(FCM[, "Cage_Uncaged"]), ] #Remove T0 samples by only including rows where the "Cage_Uncaged" exists
 FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged) 
-dotchart(FCM$FSC.Events_per_cm_2, main = "Symbionts", groups = FCM$Cage_Uncaged)
+dotchart(log10(FCM$FSC.Events_per_cm_2), main = "Symbionts by Caging Treatment", groups = FCM$Cage_Uncaged)
 ```
-Fig 1. Number of symbionts by coral surface area (Front scatter events per $cm^2$) 
+Fig 1. Log-Scaled number of symbionts by coral surface area (Front scatter events per $cm^2$) 
 
 ```{r}
-ggplot(FCM, aes(x = Cage_Uncaged, y = FSC.Events_per_cm_2, fill = Species)) +
+ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
-  facet_wrap(~Species)
+  facet_wrap(~Species)+
+  ylab("Symbiodinium density (units cm^-2, log10)")
 ```
-
 Fig 2. Number of symbionts by coral surface area (Front scatter events per $cm^2$) 
 
 #### Same figures but per g dry weight
 
 ```{r}
-dotchart(FCM$FSC.Events_per_g_dry_weight, main = "Symbionts", groups = FCM$Cage_Uncaged)
+dotchart(log10(FCM$FSC.Events_per_g_dry_weight), main = "Symbionts", groups = FCM$Cage_Uncaged)
 ```
 
-Fig 3. Number of symbionts by coral surface area (Front scatter events per gram dry slurry weight)
+Fig 3. Log10-Transformed number of symbionts by coral surface area (Front scatter events per gram dry slurry weight)
 
 ```{r}
-ggplot(FCM, aes(x = Cage_Uncaged, y = FSC.Events_per_g_dry_weight, fill = Species)) +
+ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
-  facet_wrap(~Species)
+  facet_wrap(~Species)+
+  ylab("Symbiodinium density (units g^-1, log10)")
 ```
-
 Fig 4. Number of symbionts by coral surface area (Front scatter events per gram dry slurry weight)
 
-### Example ANCOVA 
+### Comparing against published data:
+Gotta tidy it up a bit:
+```{r tidy pub data}
+#for comparing against publicly-available data, need to join data
+Edmunds_data$species <- paste(Edmunds_data$Genus, Edmunds_data$Species, sep = " ")
+Edmunds_data$Species <- Edmunds_data$species
+Edmunds_data <- Edmunds_data[,c(4,5,18,20)]
+Edmunds_data <- Edmunds_data %>% 
+  filter(Trait == "Symbiodinium density") %>% 
+  filter(Species %in% c("Porites rus", "Pocillopora damicornis"))
+Edmunds_data$FSC.Events_per_cm_2 <- Edmunds_data$Value
+Edmunds_data <- Edmunds_data[,c("Species", "FSC.Events_per_cm_2")]
+Edmunds_data$Source <- "Edmunds et al., 2014"
+
+#I went looking for more data from the coral trait database, but it only had the same data as the Edmunds paper:
+coral_trait_database <- coral_trait_database[,c("specie_name", "trait_name", "methodology_name","value")] %>% 
+  rename("Species" = "specie_name", "Value" = "value") 
+coral_trait_database <- coral_trait_database%>% 
+  filter(trait_name == "Symbiodinium density") %>% 
+  filter(Species %in% c("Porites rus", "Pocillopora damicornis", "Pocillopora acuta"))
+#STOPPING BC IDENTICAL DATA
+
+##Time to try wes data
+#Remember to subset Collection_Bleaching_Level1=="HE" to select only the healthy samples, then you can visualize either "sym.SA" or "log10.sym.SA".
+Wes_data <- Wes_data[,c("Species", "sym.SA", "Collection_Bleaching_Level1")] %>% 
+  filter(Collection_Bleaching_Level1 == "HE") %>% 
+  filter(Species == "Porites rus")
+Wes_data$FSC.Events_per_cm_2 <- Wes_data$sym.SA
+Wes_data <- Wes_data[,c("Species", "FSC.Events_per_cm_2")]
+Wes_data$Source <- "Sparagon et al., 2024"
+
+#Add in Fox data
+Fox_data$Species <- ifelse(Fox_data$Species == "POC", "Pocillopora acuta", Fox_data$Species) 
+Fox_data <- Fox_data %>% 
+  filter(Species == "Pocillopora acuta")
+Fox_data$FSC.Events_per_cm_2 <- Fox_data$Zoox.cm2
+Fox_data <- Fox_data[,c("Species","FSC.Events_per_cm_2")]
+Fox_data$Source <- "Fox et al., 2021"
+
+#And Huffmyer data
+Huffmyer_data$Species <- ifelse(Huffmyer_data$Species == "PACU", "Pocillopora acuta", Huffmyer_data$Species) 
+Huffmyer_data <- Huffmyer_data %>% 
+  filter(Species == "Pocillopora acuta")
+Huffmyer_data$FSC.Events_per_cm_2 <- Huffmyer_data$Symbionts.cm2
+Huffmyer_data <- Huffmyer_data[,c("Species","FSC.Events_per_cm_2")]
+Huffmyer_data$Source <- "Huffmyer et al., 2020"
+
+#
+pub_data <- rbind(Edmunds_data, Wes_data, Fox_data)
+pub_data$origin <- "Published Data"
+```
+Now that it should all be tidy, let's plot:
+```{r published data,warning=FALSE}
+pvmmine <- FCM[,c("Species", "FSC.Events_per_cm_2")]
+pvmmine$origin <- "CS Data"
+pvmmine$Source <- "CS Data"
+pub_vs_mine <- rbind(pvmmine,pub_data)
+pub_vs_mine$Species <- gsub("Porites_rus", "Porites rus", pub_vs_mine$Species)
+pub_vs_mine$Species <- gsub("Pocillopora_acuta", "Pocillopora acuta", pub_vs_mine$Species)
+
+ggplot(pub_vs_mine, aes(x = origin, y = log10(FSC.Events_per_cm_2), fill = Species, shape = Source)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1) +
+  facet_wrap(~Species) +
+  ylab("Symbiodinium density (units cm^-2, log10)")
+
+```
+
+Fig 5. Comparison of the number of symbionts found in each species in this dataset versus published datasets (obtained from Edmunds et al., 2014, Fox et al., 2021, Huffmyer et al., 2020, and Sparagon et al., 2024)
+
+### Models!
+
+Let's start with seeing if caging had any effect on the corals
+```{r PRU Caging Model}
+PRUcagemodel <- lmer(log10(FSC.Events_per_cm_2) ~ Cage_Uncaged + (1 | Genotype), 
+         data= FCM %>%
+           filter(Species=="Porites_rus"))
+Anova(PRUcagemodel)
+#ggcoef_model(PRUcagemodel)#I just don't love ggcoef for this kind bc it takes away se on A
+ggeffect(PRUcagemodel) %>% plot()
+#adding data to this breaks it somehow:
+#ggeffect(PRUcagemodel) %>% 
+#  plot(add.data = TRUE, alpha=0.01, jitter = TRUE, color = "darkblue")
+```
+```{r}
+PACcagemodel <- lm(log10(FSC.Events_per_cm_2) ~ Cage_Uncaged, 
+         data= FCM %>%
+           filter(Species=="Pocillopora_acuta"))
+Anova(PACcagemodel)
+#ggcoef_model(PACcagemodel) #I just don't love ggcoef for this kind bc it takes away se on A
+ggeffect(PACcagemodel) %>% plot()
+```
+So it looks like caging didn't make a big difference for either species symbiont counts. This is really interesting to me, as I'd expect the rus to have responded to the intense munching, but apparently not.
+
+
+#### Example ANCOVA 
 
 This is by the CV of Phosphate in the wet season. A pattern here would suggest the maximum amount of phosphate the coral experienced at each station contributed to the number of symbionts in the corals. I used the number of symbionts per dry weight here, because we are using one perforate and one imperforate coral. 
 
@@ -127,22 +248,23 @@ gg_data <- all_data %>%
 
 
 ```{r}
-m1 <- lm(FSC.Events_per_g_dry_weight ~ log(Maximum)*Cage_Uncaged, 
+m1 <- lm(FSC.Events_per_g_dry_weight ~ log(Maximum), 
          data= all_data %>%
            filter(Parameters=="Silicate_umolL", Species=="Porites_rus"))
-anova(m1)
-summary(m1)
+Anova(m1)
 ```
 
 
 ```{r}
-ggplot(gg_data, aes(x = Maximum, y = FSC.Events_per_g_dry_weight,)) +
-  geom_point(aes(color=Cage_Uncaged)) +  # Add points
-  scale_color_fish_d(option = "Coryphaena_hippurus")+
+ggplot(gg_data, aes(x = Maximum, y = log10(FSC.Events_per_g_dry_weight),)) +
+  geom_point(aes(color=Species)) +  # Add points
+  scale_color_fish_d(option = "Trimma_lantana") +
+  facet_wrap(~Species)+
   labs(title = "Number of Symbionts vs Phosphate Variability",
        x = "Maximum Amount of Phosphate",
-       y = "Symbionts") +
-  facet_wrap(~Species, scales = "free_y")
+       y = "Symbiodinium density (units cm^-2, log10)")
 ```
+
+
 
 

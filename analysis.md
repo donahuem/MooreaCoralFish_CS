@@ -11,16 +11,58 @@ folder and complete my project.
 
 #### Loading the data
 
+``` r
+#combine nutrient data and shore distance for a master explanatory variable data sheet
+explanatory <- left_join(nut, shore_dist[,c(2:3)], by = join_by(CowTagID))
+```
+
+``` r
+#now make an all data that has both explanatory and response variables:
+all_data <- left_join(data, explanatory, by = join_by(CowTagID))
+#suppress warnings because there will be a many-to-many relationship between x and y
+all_PAC_data <- all_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+all_PRU_data <- all_data %>% 
+  filter(Species == "Porites rus")
+```
+
 ### Data Exploration:
 
 Data exploration focuses on the following points: 1. Outliers 2.
 Collinearity 3. Independence (Relationships between response and
 explanatory variables)
 
+``` r
+par(mfrow = c(4,4), oma=c(1,1,3,1))
+hist(PAC_response_data$Change_Over_Area, main="Change Over Area", col="lightblue", xlab="Change_Over_Area")
+hist_columns <- c(7:13)
+for (i in 1:length(hist_columns)) {
+  hist(PAC_response_data[, hist_columns[i]], col="lightblue", 
+       main = paste("PAC", colnames(PAC_response_data)[hist_columns[i]], sep=" - "),
+       xlab=colnames(data)[hist_columns[i]])
+}
+hist(PRU_response_data$Change_Over_Area, main="Change Over Area", col="darkolivegreen3", xlab="Change_Over_Area")
+for (i in 1:length(hist_columns)) {
+  hist(PRU_response_data[, hist_columns[i]], col="darkolivegreen3", 
+       main = paste("PRU", colnames(PRU_response_data)[hist_columns[i]], sep=" - "),
+       xlab=colnames(data)[hist_columns[i]])
+}
+main_title <- "Data Exploration"
+title(main = main_title, outer = TRUE)
+```
+
+![](analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+
+Ok so FSC.Events are both pretty right-skewed. We normally log10
+transform these.
+
 #### Look for Outliers:
 
 Buoyant Weight It looks like that 13 A is really off. We know it broke,
 so I am removing it and replotted next to it:
+
+Now making a plot to look at outliers:
 
 ![](analysis_files/figure-gfm/BW%20Outlier%20Plot-1.png)<!-- --> I
 removed PRU V13 A placement because this was broken in the field,
@@ -35,254 +77,300 @@ PRU 49 (PRU V17 C) with her samples - I likely added twice as much as
 needed to the sample, but for now I will omit in my analyses (using
 dataframe FCM_no for “no outliers”)
 
-Now I’m going to make the symbiont data for the full sample
-
 ``` r
-#upscale it to the full sample
-#sample ran was 280 µL, full sample was 50mL
-FCM_no$sym_FSC.Events.μL.V._full <- FCM_no$sym_FSC.Events.μL.V. * (50 / 0.28)
-FCM_no <- merge(FCM_no, sa[, c('Placement_Code', 'Surface_Area')], by = 'Placement_Code') #make a joining variable
-FCM_no$sym_FSC.Events.μL.V._normalized <- FCM_no$sym_FSC.Events.μL.V._full / FCM_no$Surface_Area #divide by the surface area for symbionts per cm
-
-dotchart(FCM_no$sym_FSC.Events.μL.V._normalized, main = "Normalized Symbionts", groups = FCM_no$Cage_Uncaged)
+ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
+  facet_wrap(~Species)+
+  labs(title = expression(paste("Symbionts per ", cm^2, " by caging treatment")))+
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
-![](analysis_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
+![](analysis_files/figure-gfm/FCM%20Violin%20Plot-1.png)<!-- --> same
+but other normalization:
 
 ``` r
-boxplot(FCM_no$sym_FSC.Events.μL.V._normalized ~ FCM_no$Cage_Uncaged)
+ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1) +
+  facet_wrap(~Species)+
+  labs(title = "Symbionts per g dry weight by caging treatment")+
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
-![](analysis_files/figure-gfm/unnamed-chunk-1-2.png)<!-- -->
+![](analysis_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
 
-FCM Data Analysis: ![](analysis_files/figure-gfm/FCM-1.png)<!-- -->
+### Collinearity
 
-    ##              Df Sum Sq Mean Sq F value Pr(>F)
-    ## Cage_Uncaged  2     98   49.21   0.596  0.554
-    ## Residuals    56   4623   82.55
-
-    ##              Df Sum Sq Mean Sq F value Pr(>F)
-    ## Cage_Uncaged  2   18.8   9.387   0.663  0.519
-    ## Residuals    56  792.9  14.159
-
-    ## Analysis of Variance Table
-    ## 
-    ## Response: sym_FSC.Events
-    ##               Df   Sum Sq Mean Sq F value Pr(>F)
-    ## log(Maximum)   1    11277   11277   0.108  0.743
-    ## Residuals    117 12219556  104441
-
-    ## 
-    ## Call:
-    ## lm(formula = sym_FSC.Events ~ log(Maximum), data = all_data %>% 
-    ##     filter(Parameters == "Silicate_umolL"))
-    ## 
-    ## Residuals:
-    ##     Min      1Q  Median      3Q     Max 
-    ## -406.19 -226.12  -75.15  117.91 1718.76 
-    ## 
-    ## Coefficients:
-    ##              Estimate Std. Error t value Pr(>|t|)    
-    ## (Intercept)    388.77      54.79   7.096 1.06e-10 ***
-    ## log(Maximum)    16.43      49.99   0.329    0.743    
-    ## ---
-    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
-    ## 
-    ## Residual standard error: 323.2 on 117 degrees of freedom
-    ## Multiple R-squared:  0.000922,   Adjusted R-squared:  -0.007617 
-    ## F-statistic: 0.108 on 1 and 117 DF,  p-value: 0.743
-
-![](analysis_files/figure-gfm/random%20model-1.png)<!-- -->
+need to make a dataframe that’s long that has all the nutrient metrics
+and independent variables Here’s the thing: we KNOW the nutrients are
+collinear For example, here’s a pairs plot for the maximum of all the
+nutrient values:
 
 ``` r
-bw_no <- merge(BW_no, meta[, c('Placement_Code', 'Pin_Number','Genotype')], by = 'Placement_Code') #make a joining variable
-bw_no$CowTagID <- paste0("V",bw_no$Pin_Number) #make it match with nutrient variable name
-all_data <- left_join(bw_no, nut, by="CowTagID")  #join them
-all_data <- drop_na(all_data)
+nut_wide <- pivot_wider(
+  data = explanatory,
+  names_from = Parameters,
+  values_from =3:7,
+  names_glue = "{.value}_{Parameters}"
+)
+ggpairs(nut, columns = 2:8,progress = FALSE)
+```
 
-bw_m1_caged_PAC <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
+![](analysis_files/figure-gfm/nutrient%20collinearity-1.png)<!-- -->
+\#### PCA I want to start exploring PCA’s to explain the nutrient
+dynamics:
+
+``` r
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
+                                     !grepl("Salinity|Temperature|pH", names(nut_wide))]
+minimum_columns <- names(nut_wide)[grepl("Minimum_", names(nut_wide)) & 
+                                     grepl("Salinity|Temperature|pH", names(nut_wide))]
+
+pca.max.data <- na.omit(nut_wide[, c(maximum_columns, minimum_columns)]) #keeping V13 in this ex
+pca.max = princomp(pca.max.data, cor=TRUE)
+summary(pca.max)
+```
+
+    ## Importance of components:
+    ##                           Comp.1     Comp.2      Comp.3       Comp.4
+    ## Standard deviation     2.7174978 0.72987740 0.277101687 0.0573969257
+    ## Proportion of Variance 0.9230993 0.06659013 0.009598168 0.0004118009
+    ## Cumulative Proportion  0.9230993 0.98968941 0.999287578 0.9996993786
+    ##                              Comp.5       Comp.6       Comp.7       Comp.8
+    ## Standard deviation     0.0443378286 1.767769e-02 1.032805e-02 4.467520e-03
+    ## Proportion of Variance 0.0002457304 3.906257e-05 1.333359e-05 2.494842e-06
+    ## Cumulative Proportion  0.9999451090 9.999842e-01 9.999975e-01 1.000000e+00
+
+``` r
+loadings(pca.max)
+```
+
+    ## 
+    ## Loadings:
+    ##                         Comp.1 Comp.2 Comp.3 Comp.4 Comp.5 Comp.6 Comp.7 Comp.8
+    ## Maximum_TA               0.367         0.115  0.680  0.615                     
+    ## Maximum_NN_umolL         0.367         0.132        -0.225  0.826 -0.322       
+    ## Maximum_Silicate_umolL   0.367         0.190        -0.254 -0.392 -0.258  0.733
+    ## Maximum_Ammonia_umolL    0.262 -0.960                                          
+    ## Maximum_Phosphate_umolL  0.367         0.185        -0.412         0.799       
+    ## Minimum_Salinity        -0.367        -0.182         0.216  0.395  0.413  0.672
+    ## Minimum_pH              -0.366 -0.110 -0.143  0.723 -0.536        -0.141       
+    ## Minimum_Temperature     -0.352 -0.189  0.914                                   
+    ## 
+    ##                Comp.1 Comp.2 Comp.3 Comp.4 Comp.5 Comp.6 Comp.7 Comp.8
+    ## SS loadings     1.000  1.000  1.000  1.000  1.000  1.000  1.000  1.000
+    ## Proportion Var  0.125  0.125  0.125  0.125  0.125  0.125  0.125  0.125
+    ## Cumulative Var  0.125  0.250  0.375  0.500  0.625  0.750  0.875  1.000
+
+These look nice!!!! let’s see what the biplot looks like:
+
+``` r
+biplot(pca.max, col = c('grey', 'blue'))
+```
+
+![](analysis_files/figure-gfm/unnamed-chunk-5-1.png)<!-- --> So, not
+sure why ammonia is so far out there, but this looks kinda nice!
+
+It looks like PC1 is really an axis of SGD influence, and that it can
+explain 92% of the variation of these nutrient dynamics. If things are
+interacting with PC1, they’re probably doing so due to SGD influence.
+
+PC2 is mostly from Ammmonia, with some influence of pH and temp. I’m not
+quite sure how to interpret that yet.
+
+``` r
+nut_wide$pc1 = pca.max$scores[,1] #what's this data's score on pc1 axis
+nut_wide$pc2 = pca.max$scores[,2] #what's this data's score on pc2 axis
+
+#really, i want it back in explanatory:
+explanatory2 <- pivot_longer(
+  data = nut_wide,
+  cols = -c(CowTagID, lat, lon, shore_dist_m, pc1), # Specifying non-parameter columns
+  names_to = c(".value", "Parameter"), 
+  names_pattern = "^(.*?)_(.*)$"
+)
+
+#wide data
+all_data_pca <- left_join(data, explanatory2, by = join_by(CowTagID)) #supress warning bc this has many-to-many relationship
+pca_data_wide <- left_join(nut_wide, data, by = join_by(CowTagID))
+```
+
+Should I incorporate shore dist? Shore dist might be linear with these
+nutrients, if it isn’t, it’s better to put into the models as a separate
+variable.
+
+``` r
+ggpairs(na.omit(nut_wide), columns = 43:45,progress = FALSE)
+```
+
+![](analysis_files/figure-gfm/PCA%20vs%20Shore%20Dist-1.png)<!-- --> Not
+going to include in PCA, looks like it does its own thing, and can be
+built into models separately.
+
+### Independence
+
+### Data Analysis
+
+FCM Data Analysis:
+
+    ##              Df    Sum Sq   Mean Sq F value Pr(>F)
+    ## Cage_Uncaged  2 2.802e+08 140086728   0.596  0.555
+    ## Residuals    56 1.317e+10 235216369
+
+    ##              Df    Sum Sq  Mean Sq F value Pr(>F)
+    ## Cage_Uncaged  2  16430837  8215419   0.659  0.521
+    ## Residuals    56 697625032 12457590
+
+### Models
+
+``` r
+hist(all_data_pca$pc1)
+```
+
+![](analysis_files/figure-gfm/unnamed-chunk-6-1.png)<!-- -->
+
+Now that we’ve done our data exploration, let’s make the data frame
+needed to build some models!
+
+``` r
+#For models of only caged corals, we are running with Genotype as covariate instead of random effect
+#Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
+#for example, see how this is singular:
+
+bw_m1_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "Pocillopora acuta" & Cage_Uncaged == "C")) 
 ```
 
     ## boundary (singular) fit: see help('isSingular')
 
 ``` r
-bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + (1 | Genotype), 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
-
-bw_m1_PAC <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC"))
-
-bw_m1_PRU <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU"))
-
-summary(bw_m1_caged_PRU)
+anova(bw_m1_caged_PAC)
 ```
 
-    ## Linear mixed model fit by REML ['lmerMod']
-    ## Formula: Percent_Change ~ CVSeasonal + (1 | Genotype)
-    ##    Data: all_data %>% filter(Parameters == "Salinity" & Species == "PRU" &  
-    ##     Cage_Uncaged == "C")
-    ## 
-    ## REML criterion at convergence: -57.8
-    ## 
-    ## Scaled residuals: 
-    ##     Min      1Q  Median      3Q     Max 
-    ## -1.4252 -0.6967 -0.1671  0.6259  1.7693 
-    ## 
-    ## Random effects:
-    ##  Groups   Name        Variance  Std.Dev.
-    ##  Genotype (Intercept) 0.0002167 0.01472 
-    ##  Residual             0.0032859 0.05732 
-    ## Number of obs: 20, groups:  Genotype, 6
-    ## 
-    ## Fixed effects:
-    ##             Estimate Std. Error t value
-    ## (Intercept)  0.10696    0.02403   4.452
-    ## CVSeasonal   0.21896    8.34894   0.026
-    ## 
-    ## Correlation of Fixed Effects:
-    ##            (Intr)
-    ## CVSeasonal -0.807
+    ## Type III Analysis of Variance Table with Satterthwaite's method
+    ##               Sum Sq Mean Sq NumDF DenDF F value  Pr(>F)  
+    ## shore_dist_m 0.01686 0.01686     1    17  8.0184 0.01151 *
+    ## ---
+    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
 
 ``` r
-summary(bw_m1_PAC)
+summary(bw_m1_caged_PAC)
 ```
 
-    ## Linear mixed model fit by REML ['lmerMod']
-    ## Formula: Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged
-    ##    Data: all_data %>% filter(Parameters == "Salinity" & Species == "PAC")
+    ## Linear mixed model fit by REML. t-tests use Satterthwaite's method [
+    ## lmerModLmerTest]
+    ## Formula: Percent_Change ~ shore_dist_m + (1 | Genotype)
+    ##    Data: 
+    ## all_data %>% filter(Parameters == "Salinity" & Species == "Pocillopora acuta" &  
+    ##     Cage_Uncaged == "C")
     ## 
-    ## REML criterion at convergence: -165.3
+    ## REML criterion at convergence: -45.1
     ## 
     ## Scaled residuals: 
     ##      Min       1Q   Median       3Q      Max 
-    ## -1.46908 -0.71623 -0.07768  0.42902  2.24213 
+    ## -1.66525 -0.80143  0.04358  0.38182  2.08920 
+    ## 
+    ## Random effects:
+    ##  Groups   Name        Variance Std.Dev.
+    ##  Genotype (Intercept) 0.000000 0.00000 
+    ##  Residual             0.002103 0.04585 
+    ## Number of obs: 19, groups:  Genotype, 6
+    ## 
+    ## Fixed effects:
+    ##                Estimate Std. Error         df t value Pr(>|t|)    
+    ## (Intercept)   0.1623068  0.0246026 17.0000000   6.597 4.53e-06 ***
+    ## shore_dist_m -0.0018048  0.0006373 17.0000000  -2.832   0.0115 *  
+    ## ---
+    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+    ## 
+    ## Correlation of Fixed Effects:
+    ##             (Intr)
+    ## shore_dst_m -0.904
+    ## optimizer (nloptwrap) convergence code: 0 (OK)
+    ## boundary (singular) fit: see help('isSingular')
+
+``` r
+##plots with megan
+ggplot(all_PAC_data) +
+  geom_point(data = subset(all_PAC_data, Cage_Uncaged == "C"),
+             aes(x = Genotype, y = Percent_Change, color = shore_dist_m)) +
+  scale_color_fish(option = "Coryphaena_hippurus")
+```
+
+![](analysis_files/figure-gfm/starting%20models%20with%20megan-1.png)<!-- -->
+
+``` r
+#this shore distance looks like it could be a trend
+
+#variance components analysis within genotype and between genotype variance
+#looking at all the variance in the data, looking at the grand mean vs. the mean for the random effects
+#how much is between vs within genotype variance
+bw_m1_caged_PRU <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
+                    filter(Parameters == "Salinity" & Species == "Porites rus" & Cage_Uncaged == "C")) 
+anova(bw_m1_caged_PRU)
+```
+
+    ## Type III Analysis of Variance Table with Satterthwaite's method
+    ##                  Sum Sq    Mean Sq NumDF  DenDF F value Pr(>F)
+    ## shore_dist_m 0.00071589 0.00071589     1 14.874  0.2342 0.6355
+
+``` r
+summary(bw_m1_caged_PRU)
+```
+
+    ## Linear mixed model fit by REML. t-tests use Satterthwaite's method [
+    ## lmerModLmerTest]
+    ## Formula: Percent_Change ~ shore_dist_m + (1 | Genotype)
+    ##    Data: 
+    ## all_data %>% filter(Parameters == "Salinity" & Species == "Porites rus" &  
+    ##     Cage_Uncaged == "C")
+    ## 
+    ## REML criterion at convergence: -40.2
+    ## 
+    ## Scaled residuals: 
+    ##     Min      1Q  Median      3Q     Max 
+    ## -1.5101 -0.5620 -0.3488  0.5597  1.8883 
     ## 
     ## Random effects:
     ##  Groups   Name        Variance  Std.Dev.
-    ##  Genotype (Intercept) 0.0004458 0.02111 
-    ##  Residual             0.0024907 0.04991 
-    ## Number of obs: 58, groups:  Genotype, 7
+    ##  Genotype (Intercept) 0.0002999 0.01732 
+    ##  Residual             0.0030570 0.05529 
+    ## Number of obs: 20, groups:  Genotype, 6
     ## 
     ## Fixed effects:
-    ##               Estimate Std. Error t value
-    ## (Intercept)    0.11642    0.01735   6.711
-    ## CVSeasonal    -0.27801    4.49081  -0.062
-    ## Cage_UncagedB -0.02614    0.01619  -1.614
-    ## Cage_UncagedC -0.01797    0.01600  -1.123
+    ##                Estimate Std. Error         df t value Pr(>|t|)   
+    ## (Intercept)   0.1160243  0.0316518 12.5192659   3.666  0.00302 **
+    ## shore_dist_m -0.0003798  0.0007847 14.8741471  -0.484  0.63549   
+    ## ---
+    ## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
     ## 
     ## Correlation of Fixed Effects:
-    ##             (Intr) CVSsnl Cg_UnB
-    ## CVSeasonal  -0.584              
-    ## Cage_UncgdB -0.467  0.000       
-    ## Cage_UncgdC -0.464 -0.013  0.506
+    ##             (Intr)
+    ## shore_dst_m -0.892
+
+``` r
+ggplot(all_PRU_data) +
+  geom_point(data = subset(all_PRU_data, Cage_Uncaged == "C"),
+             aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
+  scale_color_fish(option = "Coryphaena_hippurus")
+```
+
+![](analysis_files/figure-gfm/starting%20models%20with%20megan-2.png)<!-- -->
+
+Same models as before, but now with silicate instead, because the range
+in SiO32- was an order of magnitude higher on the reef than salinity
+allowing for a higher signal to noise ratio. I also used maximum
+silicate, as it is more indicative of the maximum amount of groundwater
+experienced
+
+This also only sees a correlation between all (not just caged) change in
+buoyant weight for PRU. PAC is not significant.
+
+Now let’s see those same models with symbiont counts
+
+Nothing significant there
 
 IGNORE THESE PLOTS:
-
-``` r
-gg_data <- all_data %>% 
-  filter(Parameters == "Silicate_umolL")
-
-gg_data <- merge(gg_data, FCM_Join[, c("Placement_Code", "sym_FSC.Events")], by = "Placement_Code")
-
-ggplot(gg_data, aes(x = CVSeasonal, y = Percent_Change)) +
-  geom_point(aes(color=Species)) +  # Add points
-  labs(title = "Percent Change in Buoyant Weight vs Salinity Variability",
-       x = "CV Silicate",
-       y = "Percent Change")
-```
-
-![](analysis_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
-
-``` r
-gg_data_no <- gg_data[!(gg_data$Placement_Code == "PRU V17 C"), ]
-
-ggplot(gg_data_no, aes(x = CVSeasonal, y = sym_FSC.Events)) +
-  geom_point(aes(color=Species)) +  # Add points
-  labs(title = "Number of Symbionts vs Salinity Variability",
-       x = "CV Silicate",
-       y = "Symbionts")
-```
-
-![](analysis_files/figure-gfm/unnamed-chunk-3-2.png)<!-- -->
-
-``` r
-#NOW I'M ONLY LOOKING AT CAGED:
-gg_data <- all_data %>% 
-  filter(Parameters == "Silicate_umolL") %>% 
-  filter(Cage_Uncaged == "C")
-
-ggplot(gg_data, aes(x = CVSeasonal, y = Change_Over_Area)) +
-  geom_point(aes(color=Species)) +  # Add points
-  labs(title = "Percent Change in Buoyant Weight vs Salinity Variability",
-       x = "CV Silicate",
-       y = "Change Over Area")
-```
-
-![](analysis_files/figure-gfm/unnamed-chunk-3-3.png)<!-- -->
-
-``` r
-#IS C MORE LIKELY TO HAVE BEEN BIGGER THAN A OR B
-sym_weight <- read.csv("data/Symbiont_filter_weight.csv")
-sym_weight$Placement_Code <- sym_weight$Placement
-sym_weight$Symbiont_dry_weight <- as.numeric(sym_weight$Symbiont_dry_weight)
-```
-
-    ## Warning: NAs introduced by coercion
-
-``` r
-sym_weight <- subset(sym_weight, Symbiont_dry_weight >= 0 & !is.na(Symbiont_dry_weight))
-sym_weight <- merge(sym_weight, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
-
-# Example boxplot
-boxplot(Symbiont_dry_weight ~ Cage_Uncaged, data = sym_weight)
-```
-
-![](analysis_files/figure-gfm/unnamed-chunk-4-1.png)<!-- -->
-
-``` r
-# Create subsets for each 'Cage_Uncaged' value
-subset_A <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'A']
-subset_B <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'B']
-subset_C <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'C']
-
-# Calculate proportions for each subset
-prop_A <- mean(subset_A > 0.5, na.rm = TRUE)
-prop_B <- mean(subset_B > 0.5, na.rm = TRUE)
-prop_C <- mean(subset_C > 0.5, na.rm = TRUE)
-
-# Perform proportion test for 'C' vs 'A'
-prop_test_result <- prop.test(c(sum(subset_C > 0.5), sum(subset_A > 0.5)), c(length(subset_C), length(subset_A)))
-
-# Print the proportions and test result
-cat("Proportion for 'C':", prop_C, "\n")
-```
-
-    ## Proportion for 'C': 0.52
-
-``` r
-cat("Proportion for 'A':", prop_A, "\n")
-```
-
-    ## Proportion for 'A': 0.4545455
-
-``` r
-print(prop_test_result)
-```
-
-    ## 
-    ##  2-sample test for equality of proportions with continuity correction
-    ## 
-    ## data:  c(sum(subset_C > 0.5), sum(subset_A > 0.5)) out of c(length(subset_C), length(subset_A))
-    ## X-squared = 0.024189, df = 1, p-value = 0.8764
-    ## alternative hypothesis: two.sided
-    ## 95 percent confidence interval:
-    ##  -0.2630091  0.3939182
-    ## sample estimates:
-    ##    prop 1    prop 2 
-    ## 0.5200000 0.4545455
