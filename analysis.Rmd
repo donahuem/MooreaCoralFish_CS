@@ -37,6 +37,9 @@ TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_tidy.csv") %>% 
   rename(Placement_Code = PLACEMENT)
 shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
+seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv")
+
+shore_dist <- left_join(shore_dist, seep_dist)
 
 
 #meta takes a little massaging
@@ -68,7 +71,7 @@ PAC_response_data <- data %>%
 
 ```{r}
 #combine nutrient data and shore distance for a master explanatory variable data sheet
-explanatory <- left_join(nut, shore_dist[,c(2:3)], by = join_by(CowTagID))
+explanatory <- left_join(nut, shore_dist[,c(2:3,6)], by = join_by(CowTagID))
 ```
 
 ```{r warning=FALSE}
@@ -186,26 +189,42 @@ ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fil
 
 ### Collinearity
 need to make a dataframe that's long that has all the nutrient metrics and independent variables
-Here's the thing: we KNOW the nutrients are collinear
-For example, here's a pairs plot for the maximum of all the nutrient values:
-```{r nutrient collinearity, message=FALSE}
+```{r nutrient cleanup, message=FALSE}
 nut_wide <- pivot_wider(
   data = explanatory,
   names_from = Parameters,
   values_from =3:7,
   names_glue = "{.value}_{Parameters}"
 )
-ggpairs(nut, columns = 2:8,progress = FALSE)
-```
-#### PCA
-I want to start exploring PCA's to explain the nutrient dynamics:
-```{r PCA Max}
+
 maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
                                      !grepl("Salinity|Temperature|pH", names(nut_wide))]
+
 minimum_columns <- names(nut_wide)[grepl("Minimum_", names(nut_wide)) & 
                                      grepl("Salinity|Temperature|pH", names(nut_wide))]
+nut_wide_no_seep <- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
+```
+Here's the thing: we KNOW the nutrients are collinear
+For example, here's a pairs plot for the maximum of all the nutrient values:
 
-pca.max.data <- na.omit(nut_wide[, c(maximum_columns, minimum_columns)]) #keeping V13 in this ex
+```{r pairs plot collinearity}
+ggpairs(nut_wide_no_seep[, c(maximum_columns)],progress = FALSE)
+```
+
+
+#### PCA
+I want to start exploring PCA's to explain the nutrient dynamics:
+
+MJD says to run this w/o ammonia!! Originally, Ammonia was really heavily out-grouping. 
+MJD: It is higher coming out of the seep, but it's taken up really quickly
+Could be more of an alongshore axis (but you'll see later it's not acutally tightly correlated)
+
+```{r PCA Max}
+#MJD says to run this w/o ammonia!!
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
+                                     !grepl("Salinity|Temperature|pH|Ammonia_umol", names(nut_wide))]
+
+pca.max.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns)]) #keeping V13 in this ex
 pca.max = princomp(pca.max.data, cor=TRUE)
 summary(pca.max)
 loadings(pca.max)
@@ -215,18 +234,17 @@ These look nice!!!! let's see what the biplot looks like:
 ```{r}
 biplot(pca.max, col = c('grey', 'blue'))
 ```
-So, not sure why ammonia is so far out there, but this looks kinda nice! 
-
 It looks like PC1 is really an axis of SGD influence, and that it can explain 92% of the variation of these nutrient dynamics. If things are interacting with PC1, they're probably doing so due to SGD influence. 
+
 
 PC2 is mostly from Ammmonia, with some influence of pH and temp. I'm not quite sure how to interpret that yet.
 ```{r PCA Max axes into dataset, warning=FALSE}
-nut_wide$pc1 = pca.max$scores[,1] #what's this data's score on pc1 axis
-nut_wide$pc2 = pca.max$scores[,2] #what's this data's score on pc2 axis
+nut_wide_no_seep$pc1 = pca.max$scores[,1] #what's this data's score on pc1 axis
+nut_wide_no_seep$pc2 = pca.max$scores[,2] #what's this data's score on pc2 axis
 
 #really, i want it back in explanatory:
 explanatory2 <- pivot_longer(
-  data = nut_wide,
+  data = nut_wide_no_seep,
   cols = -c(CowTagID, lat, lon, shore_dist_m, pc1), # Specifying non-parameter columns
   names_to = c(".value", "Parameter"), 
   names_pattern = "^(.*?)_(.*)$"
@@ -237,11 +255,28 @@ all_data_pca <- left_join(data, explanatory2, by = join_by(CowTagID)) #supress w
 pca_data_wide <- left_join(nut_wide, data, by = join_by(CowTagID))
 ```
 
+Megan wants me to 'take the loadings onto pc1'
+make a "cheap map" that plots lat long and colors by pc1
+```{r}
+ggplot(nut_wide_no_seep, aes(x = lon, y = lat, color = pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
 Should I incorporate shore dist? Shore dist might be linear with these nutrients, if it isn't, it's better to put into the models as a separate variable.
 ```{r PCA vs Shore Dist, warning=FALSE}
-ggpairs(na.omit(nut_wide), columns = 43:45,progress = FALSE)
+ggpairs(na.omit(nut_wide_no_seep)[c("pc1", "pc2", "shore_dist_m", "dist_to_seep_m")], progress = FALSE)
 ```
 Not going to include in PCA, looks like it does its own thing, and can be built into models separately.
+```{r warning=FALSE}
+#reminder that V13 is removed in dist to seep stuff becuase it is not supposed to be there
+ggplot(nut_wide_no_seep)+
+  geom_point(aes(x=dist_to_seep_m, y=pc1, color = shore_dist_m))+
+  scale_color_fish(option = "Coryphaena_hippurus")
+```
+
 
 ### Independence
 ```{r independence}
@@ -267,8 +302,41 @@ summary(anova_PAC)
 ```
 
 ### Models
-```{r}
+```{r }
 hist(all_data_pca$pc1)
+bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
+                    filter(Parameters == "Salinity" & 
+                             Species == "Pocillopora acuta" 
+                           & Cage_Uncaged == "C")) 
+anova(bw_caged_PAC)
+
+
+data = all_data_pca %>% 
+                    filter(Parameter == "Salinity" & 
+                             Species == "Pocillopora acuta" 
+                           & Cage_Uncaged == "C")
+
+bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + (1 | Genotype), data = data) 
+anova(bw_caged_PAC)
+
+#this removes V13 because it doesn't have shore dist
+ggplot(data)+
+  geom_point(aes(x = shore_dist_m, y = Percent_Change, color = pc1))+
+  scale_color_fish(option = "Coryphaena_hippurus")+
+  labs(title="Growth of Pocillopora acuta colonies against distance from shore")
+```
+
+So this is suggesting that distance from shore is significant, let's see if SGD is too:
+```{r}
+bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + (1 | Genotype), data = all_data_pca %>% 
+                    filter(Parameter == "Salinity" & 
+                             Species == "Pocillopora acuta" 
+                           & Cage_Uncaged == "C")) 
+anova(bw_caged_PAC)
+ggplot(data)+
+  geom_point(aes(x = pc1, y = Percent_Change, color = shore_dist_m))+
+  scale_color_fish(option = "Coryphaena_hippurus")+
+  labs(title="Growth of Pocillopora acuta colonies against markers of Submarine Groundwater Discharge")
 ```
 
 
