@@ -38,8 +38,14 @@ FCM <- read.csv("data/FCM_tidy.csv") %>%
   rename(Placement_Code = PLACEMENT)
 shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
 seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv")
+depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
+clod <- read.csv("data/Clod_Cards.csv")
+clod$CowTagID <- paste0("V",clod$PIN)
+clod <- clod[,c(13,11)]
 
+depth <- depth[,c(1,2,6)]
 shore_dist <- left_join(shore_dist, seep_dist)
+shore_dist <- left_join(shore_dist, depth)
 
 
 #meta takes a little massaging
@@ -221,10 +227,14 @@ Could be more of an alongshore axis (but you'll see later it's not acutally tigh
 
 ```{r PCA Max}
 #MJD says to run this w/o ammonia!!
+#NS says to try this w/o temp n pH
 maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
                                      !grepl("Salinity|Temperature|pH|Ammonia_umol", names(nut_wide))]
 
-pca.max.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns)]) #keeping V13 in this ex
+#NS says to add in CV
+CV_columns <- names(nut_wide)[grepl("CVSeasonal_", names(nut_wide), names(nut_wide))]
+
+pca.max.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns,CV_columns)]) #keeping V13 in this ex
 pca.max = princomp(pca.max.data, cor=TRUE)
 summary(pca.max)
 loadings(pca.max)
@@ -243,21 +253,46 @@ nut_wide_no_seep$pc1 = pca.max$scores[,1] #what's this data's score on pc1 axis
 nut_wide_no_seep$pc2 = pca.max$scores[,2] #what's this data's score on pc2 axis
 
 #really, i want it back in explanatory:
+nut_wide_no_seep <- nut_wide_no_seep[,c(1:47)]
 explanatory2 <- pivot_longer(
   data = nut_wide_no_seep,
-  cols = -c(CowTagID, lat, lon, shore_dist_m, pc1), # Specifying non-parameter columns
-  names_to = c(".value", "Parameter"), 
-  names_pattern = "^(.*?)_(.*)$"
-)
+  cols = c(shore_dist_m:pc2)) # Specifying non-parameter columns
+ # names_to = c("value", "Parameter") 
+  #names_pattern = "^(.*?)_(.*)$"
+#)
+
+PAC_response_data_caged <- PAC_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+PAC_response_data_caged <- PAC_response_data_caged[,c("Change_Over_Area","Percent_Change","CowTagID")]
+explanatory2 <- left_join(PAC_response_data_caged, explanatory2)
+#explanatory2 <- pivot_longer(
+#  data = nut_wide_no_seep,
+#  cols = -c(CowTagID, lat, lon), # Specifying non-parameter columns
+#  names_to = c(".value", "Parameter"), 
+#  names_pattern = "^(.*?)_(.*)$"
+#)
 
 #wide data
 all_data_pca <- left_join(data, explanatory2, by = join_by(CowTagID)) #supress warning bc this has many-to-many relationship
 pca_data_wide <- left_join(nut_wide, data, by = join_by(CowTagID))
 ```
+```{r}
+plot <- explanatory2 %>%
+  ggplot(aes(x = value, y = Percent_Change))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  facet_wrap(~name, scales = "free")
+
+ggsave(filename = "explanatory.png", plot = plot, width = 15, height = 15)
+```
 
 Megan wants me to 'take the loadings onto pc1'
 make a "cheap map" that plots lat long and colors by pc1
 ```{r}
+#editing nutwidenoseep so that i also now have clod card data. clean this up later
+nut_wide_no_seep <- left_join(nut_wide_no_seep, clod) 
+
 ggplot(nut_wide_no_seep, aes(x = lon, y = lat, color = pc1)) +
   geom_point() +
   labs(x = "Latitude", y = "Longitude", color = "PC1") +
@@ -275,6 +310,16 @@ Not going to include in PCA, looks like it does its own thing, and can be built 
 ggplot(nut_wide_no_seep)+
   geom_point(aes(x=dist_to_seep_m, y=pc1, color = shore_dist_m))+
   scale_color_fish(option = "Coryphaena_hippurus")
+```
+
+### NS reccomendation
+
+ * Grab both dataframes and make the same version of nut
+ * make graphs that have the min/max (like you've put into the PCA) and then the PC axes and then the bw
+ * use BW just caged and do model selection like Kyle says
+ 
+```{r}
+
 ```
 
 
@@ -315,20 +360,23 @@ data = all_data_pca %>%
                     filter(Parameter == "Salinity" & 
                              Species == "Pocillopora acuta" 
                            & Cage_Uncaged == "C")
+#adding clod card, clean this up
+data <- left_join(data, clod)
 
 bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + (1 | Genotype), data = data) 
 anova(bw_caged_PAC)
 
 #this removes V13 because it doesn't have shore dist
-ggplot(data)+
-  geom_point(aes(x = shore_dist_m, y = Percent_Change, color = pc1))+
+ggplot(data, aes(x = X._loss, y = Percent_Change))+
+  geom_point(aes(color = pc1))+
   scale_color_fish(option = "Coryphaena_hippurus")+
+  geom_smooth(method = "lm", formula = 'y~poly(x,2)')+
   labs(title="Growth of Pocillopora acuta colonies against distance from shore")
 ```
 
 So this is suggesting that distance from shore is significant, let's see if SGD is too:
 ```{r}
-bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + (1 | Genotype), data = all_data_pca %>% 
+bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + pc2 + (1 | Genotype), data = all_data_pca %>% 
                     filter(Parameter == "Salinity" & 
                              Species == "Pocillopora acuta" 
                            & Cage_Uncaged == "C")) 
