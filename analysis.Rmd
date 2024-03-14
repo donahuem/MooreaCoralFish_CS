@@ -8,6 +8,12 @@ output: github_document
 
 This is a R Markdown file in which I hope to write out my analyses. I will use this document to process all the R scripts found in the R folder and complete my project. 
 
+### NS reccomendation
+
+ * Grab both dataframes and make the same version of nut
+ * make graphs that have the min/max (like you've put into the PCA) and then the PC axes and then the bw
+ * use BW just caged and do model selection like Kyle says
+
 #### Loading the data
 ```{r load packages, echo=FALSE, message=FALSE}
 library(tidyverse)
@@ -29,32 +35,29 @@ library(arm) #discrete hist
 ```
 
 ```{r load data, echo=FALSE}
+#explanatory data
+explanatory <- read.csv("data/Explanatory_variables.csv")
 nut <- read.csv("data/March_nutrients_processed.csv")
+nut_wide <- read.csv("data/Nutrient_data_wide.csv")
+
+#Response data
 sa <- read.csv("data/Surface_Area.csv")
 BW <- read.csv("data/BW_tidy.csv") 
 BW <- subset(BW, select=-c(1,4,5)) #remove some erroneous columns
 TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_tidy.csv") %>% 
   rename(Placement_Code = PLACEMENT)
-shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
-seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv")
-depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
-clod <- read.csv("data/Clod_Cards.csv")
-clod$CowTagID <- paste0("V",clod$PIN)
-clod <- clod[,c(13,11)]
 
-depth <- depth[,c(1,2,6)]
-shore_dist <- left_join(shore_dist, seep_dist)
-shore_dist <- left_join(shore_dist, depth)
-
-
-#meta takes a little massaging
+#metadata
 PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") 
+PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
+```
+
+```{r response variables, echo=FALSE}
+#meta takes a little massaging
 PAC_meta <- PAC_meta[,c(3:10)]
 PAC_meta$Species <- "Pocillopora acuta"
-PAC_meta$Genotype <- gsub('PR21', 'PA21', PAC_meta$Genotype) #did find a typo in the genotypes here
-
-PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
+PAC_meta$Genotype <- gsub('PR21', 'PA21', PAC_meta$Genotype) #fix a typo in the genotypes
 PRU_meta <- PRU_meta[,c(2:9)]
 PRU_meta$Species <- "Porites rus"
 
@@ -62,28 +65,30 @@ meta <- rbind(PAC_meta, PRU_meta)
 meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
 
 #make a master response variable data sheet
-data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5)], by = join_by(Placement_Code)) %>% 
+response_data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5)], by = join_by(Placement_Code)) %>% 
   #select(!X) %>% #check that this doesn't need to be here
   left_join(FCM[,c(1,15,17)], by = join_by(Placement_Code)) %>% 
   left_join(TLE[,c(3:7)], by = join_by(Placement_Code)) 
-data$CowTagID <- paste0("V",data$Pin_Number)
+response_data$CowTagID <- paste0("V",response_data$Pin_Number)
 
-PRU_response_data <- data %>% 
+PRU_response_data <- response_data %>% 
   filter(Species == "Porites rus")
 
-PAC_response_data <- data %>% 
+PRU_response_data_caged <- PRU_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+PAC_response_data <- response_data %>% 
   filter(Species == "Pocillopora acuta")
+
+PAC_response_data_caged <- PAC_response_data %>% 
+  filter(Cage_Uncaged == "C")
 ```
 
-```{r}
-#combine nutrient data and shore distance for a master explanatory variable data sheet
-explanatory <- left_join(nut, shore_dist[,c(2:3,6)], by = join_by(CowTagID))
-```
-
-```{r warning=FALSE}
+```{r all data, warning=FALSE}
 #now make an all data that has both explanatory and response variables:
-all_data <- left_join(data, explanatory, by = join_by(CowTagID))
+all_data <- left_join(response_data, explanatory, by = join_by(CowTagID))
 #suppress warnings because there will be a many-to-many relationship between x and y
+all_data$Genotype <- as.factor(all_data$Genotype)
 all_PAC_data <- all_data %>% 
   filter(Species == "Pocillopora acuta")
 
@@ -91,13 +96,14 @@ all_PRU_data <- all_data %>%
   filter(Species == "Porites rus")
 ```
 
-### Data Exploration:
+## Data Exploration:
 Data exploration focuses on the following points:
 1. Outliers
 2. Collinearity
 3. Independence (Relationships between response and explanatory variables) 
 
-```{r fig.width=10, fig.height=10}
+```{r response data hist, fig.width=10, fig.height=10, echo=FALSE}
+png("output/response_data_hist.png", width = 1100, height = 1100)
 par(mfrow = c(4,4), oma=c(1,1,3,1))
 hist(PAC_response_data$Change_Over_Area, main="Change Over Area", col="lightblue", xlab="Change_Over_Area")
 hist_columns <- c(7:13)
@@ -112,11 +118,36 @@ for (i in 1:length(hist_columns)) {
        main = paste("PRU", colnames(PRU_response_data)[hist_columns[i]], sep=" - "),
        xlab=colnames(data)[hist_columns[i]])
 }
-main_title <- "Data Exploration"
+main_title <- "Response Data Exploration"
 title(main = main_title, outer = TRUE)
+dev.off()
 ```
 
-Ok so FSC.Events are both pretty right-skewed. We normally log10 transform these.
+Ok so FSC.Events are both pretty right-skewed. CN says log10 transform these.
+
+```{r raw growth data plots, echo=FALSE}
+species <- unique(all_data$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = Percent_Change)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+  ggsave(filename = paste("output/raw_growth_data_response_plot_", sp, ".png", sep = ""),
+         plot = plot, 
+         width = 15, height = 15)
+}
+```
+
 
 #### Look for Outliers:
 Buoyant Weight
@@ -143,19 +174,12 @@ I removed PRU V13 A placement because this was broken in the field, creating a l
 TLE
 ```{r TLE Plot, echo=FALSE}
 TLE <- merge(TLE, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
-# Setting up the layout
-layout(matrix(c(1, 2, 3, 4), 2, 2, byrow = TRUE))
-# Side Max L Plot
-dotchart(TLE$Max_L_AVG, main = "Max L", groups = TLE$Cage_Uncaged)
-# Basal Max L plot
-dotchart(TLE$Max_L_Basal, main = "Max L Basal", groups = TLE$Cage_Uncaged)
-# Area plot
-dotchart(TLE$Area_AVG, main = "Area", groups = TLE$Cage_Uncaged)
-# Basal Area plot
-dotchart(TLE$Area_Basal, main = "Basal Area", groups = TLE$Cage_Uncaged)
-# Reset the layout
-layout(1)
-# Add a title
+layout(matrix(c(1, 2, 3, 4), 2, 2, byrow = TRUE)) # Setting up the layout
+dotchart(TLE$Max_L_AVG, main = "Max L", groups = TLE$Cage_Uncaged) # Side Max L Plot
+dotchart(TLE$Max_L_Basal, main = "Max L Basal", groups = TLE$Cage_Uncaged) # Basal Max L plot
+dotchart(TLE$Area_AVG, main = "Area", groups = TLE$Cage_Uncaged) # Area plot
+dotchart(TLE$Area_Basal, main = "Basal Area", groups = TLE$Cage_Uncaged) # Basal Area plot
+layout(1) # Reset the layout
 title("TLE Outlier Dotchart", line = -1, outer = TRUE, cex.main = 1.5)
 ```
 
@@ -174,7 +198,7 @@ layout(1)
 Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as much as needed to the sample, but for now I will omit in my analyses (using dataframe FCM_no for "no outliers")
 
 ```{r FCM Violin Plot}
-ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
+ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
@@ -183,8 +207,8 @@ ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Spec
   theme(plot.title = element_text(hjust = 0.5))
 ```
 same but other normalization:
-```{r}
-ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
+```{r FCM Violin Plot Dry Weight}
+ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1) +
@@ -195,129 +219,16 @@ ggplot(FCM_no, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fil
 
 ### Collinearity
 need to make a dataframe that's long that has all the nutrient metrics and independent variables
-```{r nutrient cleanup, message=FALSE}
-nut_wide <- pivot_wider(
-  data = explanatory,
-  names_from = Parameters,
-  values_from =3:7,
-  names_glue = "{.value}_{Parameters}"
-)
-
-maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
-                                     !grepl("Salinity|Temperature|pH", names(nut_wide))]
-
-minimum_columns <- names(nut_wide)[grepl("Minimum_", names(nut_wide)) & 
-                                     grepl("Salinity|Temperature|pH", names(nut_wide))]
-nut_wide_no_seep <- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
-```
 Here's the thing: we KNOW the nutrients are collinear
 For example, here's a pairs plot for the maximum of all the nutrient values:
 
 ```{r pairs plot collinearity}
+nut_wide_no_seep<- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & !grepl("Salinity|Temperature|pH|Ammonia_umol", names(nut_wide))]
+
 ggpairs(nut_wide_no_seep[, c(maximum_columns)],progress = FALSE)
 ```
 
-
-#### PCA
-I want to start exploring PCA's to explain the nutrient dynamics:
-
-MJD says to run this w/o ammonia!! Originally, Ammonia was really heavily out-grouping. 
-MJD: It is higher coming out of the seep, but it's taken up really quickly
-Could be more of an alongshore axis (but you'll see later it's not acutally tightly correlated)
-
-```{r PCA Max}
-#MJD says to run this w/o ammonia!!
-#NS says to try this w/o temp n pH
-maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
-                                     !grepl("Salinity|Temperature|pH|Ammonia_umol", names(nut_wide))]
-
-#NS says to add in CV
-CV_columns <- names(nut_wide)[grepl("CVSeasonal_", names(nut_wide), names(nut_wide))]
-
-pca.max.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns,CV_columns)]) #keeping V13 in this ex
-pca.max = princomp(pca.max.data, cor=TRUE)
-summary(pca.max)
-loadings(pca.max)
-```
-These look nice!!!! let's see what the biplot looks like:
-
-```{r}
-biplot(pca.max, col = c('grey', 'blue'))
-```
-It looks like PC1 is really an axis of SGD influence, and that it can explain 92% of the variation of these nutrient dynamics. If things are interacting with PC1, they're probably doing so due to SGD influence. 
-
-
-PC2 is mostly from Ammmonia, with some influence of pH and temp. I'm not quite sure how to interpret that yet.
-```{r PCA Max axes into dataset, warning=FALSE}
-nut_wide_no_seep$pc1 = pca.max$scores[,1] #what's this data's score on pc1 axis
-nut_wide_no_seep$pc2 = pca.max$scores[,2] #what's this data's score on pc2 axis
-
-#really, i want it back in explanatory:
-nut_wide_no_seep <- nut_wide_no_seep[,c(1:47)]
-explanatory2 <- pivot_longer(
-  data = nut_wide_no_seep,
-  cols = c(shore_dist_m:pc2)) # Specifying non-parameter columns
- # names_to = c("value", "Parameter") 
-  #names_pattern = "^(.*?)_(.*)$"
-#)
-
-PAC_response_data_caged <- PAC_response_data %>% 
-  filter(Cage_Uncaged == "C")
-
-PAC_response_data_caged <- PAC_response_data_caged[,c("Change_Over_Area","Percent_Change","CowTagID")]
-explanatory2 <- left_join(PAC_response_data_caged, explanatory2)
-#explanatory2 <- pivot_longer(
-#  data = nut_wide_no_seep,
-#  cols = -c(CowTagID, lat, lon), # Specifying non-parameter columns
-#  names_to = c(".value", "Parameter"), 
-#  names_pattern = "^(.*?)_(.*)$"
-#)
-
-#wide data
-all_data_pca <- left_join(data, explanatory2, by = join_by(CowTagID)) #supress warning bc this has many-to-many relationship
-pca_data_wide <- left_join(nut_wide, data, by = join_by(CowTagID))
-```
-```{r}
-plot <- explanatory2 %>%
-  ggplot(aes(x = value, y = Percent_Change))+
-  geom_point()+
-  geom_smooth(method = "lm")+
-  facet_wrap(~name, scales = "free")
-
-ggsave(filename = "explanatory.png", plot = plot, width = 15, height = 15)
-```
-
-Megan wants me to 'take the loadings onto pc1'
-make a "cheap map" that plots lat long and colors by pc1
-```{r}
-#editing nutwidenoseep so that i also now have clod card data. clean this up later
-nut_wide_no_seep <- left_join(nut_wide_no_seep, clod) 
-
-ggplot(nut_wide_no_seep, aes(x = lon, y = lat, color = pc1)) +
-  geom_point() +
-  labs(x = "Latitude", y = "Longitude", color = "PC1") +
-  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
-  theme_minimal()
-```
-
-Should I incorporate shore dist? Shore dist might be linear with these nutrients, if it isn't, it's better to put into the models as a separate variable.
-```{r PCA vs Shore Dist, warning=FALSE}
-ggpairs(na.omit(nut_wide_no_seep)[c("pc1", "pc2", "shore_dist_m", "dist_to_seep_m")], progress = FALSE)
-```
-Not going to include in PCA, looks like it does its own thing, and can be built into models separately.
-```{r warning=FALSE}
-#reminder that V13 is removed in dist to seep stuff becuase it is not supposed to be there
-ggplot(nut_wide_no_seep)+
-  geom_point(aes(x=dist_to_seep_m, y=pc1, color = shore_dist_m))+
-  scale_color_fish(option = "Coryphaena_hippurus")
-```
-
-### NS reccomendation
-
- * Grab both dataframes and make the same version of nut
- * make graphs that have the min/max (like you've put into the PCA) and then the PC axes and then the bw
- * use BW just caged and do model selection like Kyle says
- 
 ```{r}
 
 ```
@@ -329,6 +240,8 @@ ggplot(nut_wide_no_seep)+
 ```
 
 ### Data Analysis
+
+
 FCM Data Analysis:
 ```{r FCM vis, echo=FALSE}
 anova_PRU <- aov(FSC.Events_per_cm_2 ~ Cage_Uncaged, 
@@ -347,44 +260,29 @@ summary(anova_PAC)
 ```
 
 ### Models
-```{r }
-hist(all_data_pca$pc1)
-bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
-                    filter(Parameters == "Salinity" & 
-                             Species == "Pocillopora acuta" 
-                           & Cage_Uncaged == "C")) 
+```{r}
+bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>%                     filter(Species == "Pocillopora acuta" 
+                           & Cage_Uncaged == "C"))
 anova(bw_caged_PAC)
 
-
-data = all_data_pca %>% 
-                    filter(Parameter == "Salinity" & 
-                             Species == "Pocillopora acuta" 
-                           & Cage_Uncaged == "C")
-#adding clod card, clean this up
-data <- left_join(data, clod)
-
-bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + (1 | Genotype), data = data) 
-anova(bw_caged_PAC)
-
+data <- all_data %>% 
+                     filter(Species == "Pocillopora acuta" 
+                           & Cage_Uncaged == "C" 
+                           & Parameter == "pc1") 
 #this removes V13 because it doesn't have shore dist
 ggplot(data, aes(x = X._loss, y = Percent_Change))+
-  geom_point(aes(color = pc1))+
+  geom_point(aes(color = value))+
   scale_color_fish(option = "Coryphaena_hippurus")+
   geom_smooth(method = "lm", formula = 'y~poly(x,2)')+
   labs(title="Growth of Pocillopora acuta colonies against distance from shore")
 ```
-
 So this is suggesting that distance from shore is significant, let's see if SGD is too:
 ```{r}
-bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + pc1 + pc2 + (1 | Genotype), data = all_data_pca %>% 
-                    filter(Parameter == "Salinity" & 
-                             Species == "Pocillopora acuta" 
-                           & Cage_Uncaged == "C")) 
+bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + value + (1 | Genotype), data = all_data %>% 
+                     filter(Species == "Pocillopora acuta" 
+                           & Cage_Uncaged == "C" 
+                           & Parameter == "pc1") ) 
 anova(bw_caged_PAC)
-ggplot(data)+
-  geom_point(aes(x = pc1, y = Percent_Change, color = shore_dist_m))+
-  scale_color_fish(option = "Coryphaena_hippurus")+
-  labs(title="Growth of Pocillopora acuta colonies against markers of Submarine Groundwater Discharge")
 ```
 
 

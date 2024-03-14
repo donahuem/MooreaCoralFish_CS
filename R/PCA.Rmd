@@ -15,7 +15,20 @@ library(grid) #for as.grob
 ```
 
 ```{r tidy data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 nut <- read.csv("data/March_nutrients_processed.csv")
+shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
+seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv")
+depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
+clod <- read.csv("data/Clod_Cards.csv")
+```
+```{r}
+clod$CowTagID <- paste0("V",clod$PIN)
+clod <- clod[,c(13,11)]
+
+depth <- depth[,c(1,2,6)]
+shore_dist <- left_join(shore_dist, seep_dist, by ="CowTagID")
+shore_dist <- left_join(shore_dist, depth, by = "CowTagID")
 
 nut_wide <- pivot_wider(
   data = nut,
@@ -23,17 +36,30 @@ nut_wide <- pivot_wider(
   values_from =3:9,
   names_glue = "{.value}_{Parameters}"
 )
-maximum_nut <- nut_wide[, grep("Maximum", names(nut_wide))]
-minimum_nut <- nut_wide[, grep("Minimum", names(nut_wide))]
-mean_nut <- nut_wide[, grep("Mean", names(nut_wide))]
-cv_nut <- nut_wide[, grep("CV", names(nut_wide))]
+nut_wide_no_seep <- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
+
+minimum_columns <- names(nut_wide)[grepl("Minimum_", names(nut_wide)) & 
+                                     grepl("Salinity|Temperature|pH", names(nut_wide))]
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(nut_wide))]
+mean_columns <- names(nut_wide)[grepl("MeanSeasonal_", names(nut_wide)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(nut_wide))]
+CV_columns <- names(nut_wide)[grepl("CVSeasonal_", names(nut_wide), names(nut_wide))]
+meta_columns <- names(nut_wide_no_seep)[c(1:6)]
+
+
+
+pca.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns, mean_columns, CV_columns)])
+#keeping V13 in this ex
 ```
 
 
-###CV PCA
+###PCA
 ```{r}
-pca = princomp(cv_nut, cor=TRUE)
+pca = princomp(pca.data, cor=TRUE)
 summary(pca)
+```
+```{r}
 loadings(pca)
 ```
 
@@ -41,23 +67,38 @@ loadings(pca)
 biplot(pca, col = c('grey', 'blue'))
 ```
 
-
-
 ```{r}
-biplots <- list()
-list_of_dataframes <- list(maximum_nut, minimum_nut, mean_nut, cv_nut)
-
-# Iterate over each dataframe
-for (df in list_of_dataframes) {
-  pca <- princomp(df, cor = TRUE)
-  print(summary(pca))
-  print(loadings(pca))
-  biplot_data <- biplot(pca, col = c('grey', 'blue'))
-  biplots[length(biplots)+1] <- print(biplot_data)
-}
-
-grid.arrange(grobs = biplots)
+nut_wide_no_seep$pc1 = pca$scores[,1] #what's this data's score on pc1 axis
+nut_wide_no_seep$pc2 = pca$scores[,2] #what's this data's score on pc2 axis
 ```
 
 
+Megan wants me to 'take the loadings onto pc1'
+make a "cheap map" that plots lat long and colors by pc1
+```{r}
+#editing nutwidenoseep so that i also now have clod card data and shore dist data as columns
+nut_wide_no_seep <- left_join(nut_wide_no_seep, clod) 
+nut_wide_no_seep <- left_join(nut_wide_no_seep, seep_dist[,c("CowTagID", "lat", "lon", "dist_to_seep_m")])
+nut_wide_no_seep <- left_join(nut_wide_no_seep, shore_dist[,c("CowTagID", "shore_dist_m")])
 
+ggplot(nut_wide_no_seep, aes(x = lon, y = lat, color = pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+Should I incorporate shore dist? Shore dist might be linear with these nutrients, if it isn't, it's better to put into the models as a separate variable.
+```{r PCA vs Shore Dist, warning=FALSE}
+ggpairs(na.omit(nut_wide_no_seep)[c("pc1", "pc2", "shore_dist_m", "dist_to_seep_m")], progress = FALSE)
+```
+
+
+```{r}
+nut_wide_no_seepa <- nut_wide_no_seep[, c(meta_columns,maximum_columns, minimum_columns, mean_columns, CV_columns,"pc1","pc2","X._loss", "lat","lon","dist_to_seep_m","shore_dist_m")]
+explanatory2 <- pivot_longer(
+  data = nut_wide_no_seepa,
+  cols = c(Maximum_Salinity:pc2)) 
+names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
+#write.csv(explanatory2,"Explanatory_variables.csv")
+```
