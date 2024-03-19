@@ -37,9 +37,10 @@ library(MuMIn) #dredge
 
 ```{r load data, echo=FALSE}
 #explanatory data
-explanatory <- read.csv("data/Explanatory_variables.csv")
+all_nut <- read.csv("data/Nutrients_Processed_All.csv")
 nut <- read.csv("data/March_nutrients_processed.csv")
 nut_wide <- read.csv("data/Nutrient_data_wide.csv")
+explanatory <- read.csv("data/Explanatory_variables.csv")
 
 #Response data
 sa <- read.csv("data/Surface_Area.csv")

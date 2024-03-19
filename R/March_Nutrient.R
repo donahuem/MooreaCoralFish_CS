@@ -7,6 +7,7 @@ library(tidyverse)
 library(lubridate)
 library(here)
 library(curl)
+library(dplyr)
 
 ## Read in data
 AugChemData<-read_csv(curl('https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/August2021/Allbiogeochemdata_QC.csv')) %>% mutate(Season = "Dry")
@@ -23,7 +24,7 @@ gps <- AugChemData %>%
 MarchChem <- MarchChemData %>%
   filter(substr(CowTagID, 1, 1) == "V") %>%
   rename(Temperature = TempInSitu) %>%
-  filter(!(CowTagID %in% c("VSPRING", "VRC"))) %>%#DB removed these "unnecessary" sites. I am too.
+  filter(!(CowTagID %in% c("VSPRING", "VRC"))) %>% #DB removed these "unnecessary" sites. I am too.
   left_join(gps, by = c('CowTagID')) %>% 
   left_join(turb, by = c('CowTagID')) %>% 
   select(-c(Date, SeepCode, SamplingTime, Notes, Season)) %>% 

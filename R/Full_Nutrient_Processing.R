@@ -7,6 +7,7 @@ library(tidyverse)
 library(lubridate)
 library(here)
 library(curl) # pull data from url
+library(dplyr)
 
 
 ## Read in data
@@ -71,11 +72,11 @@ removeSite4 <- MarchChemData %>%
                          "CSPRING_BEACH2"))
 
 ## Pull out Location, lat, lon of CowTagIDs
-gps <- AugChemData %>% select(Location, CowTagID, lat, lon) %>% distinct()
+gps <- AugChemData[,c(1:4)] %>% distinct()
 
 ## Remove unnecessary/redundant data
 AugChem <- AugChemData %>%
-  select(-c(Date,
+  dplyr::select(-c(Date,
             Time,
             DateTime,
             Plate_Seep,
@@ -85,7 +86,8 @@ AugChem <- AugChemData %>%
             #Temperature,
             # Craig recommends to remove "because we don't hypothesize them to be
             # orthogonal to any of the other fDOM we're using"
-            MarineHumic_Like, Lignin_Like)) %>%
+            MarineHumic_Like, 
+            Lignin_Like)) %>%
   anti_join(removeSite1) %>% # remove outlier/irrelevant data
   anti_join(removeSite2) %>%
   anti_join(removeSite3) %>%
@@ -95,7 +97,7 @@ AugChem <- AugChemData %>%
 
 MarchChem <- MarchChemData %>%
   rename(Temperature = TempInSitu) %>%
-  select(-c(Date,
+  dplyr::select(-c(Date,
             SeepCode,
             SamplingTime,
             #Temperature,
@@ -190,11 +192,23 @@ full_data <- full_data %>%
   left_join(cv_dataA) %>%
   mutate(CVSeasonal = sdS / MeanSeasonal,
          CVAll = sdA / MeanAll) %>%
-  select(-c(sdS, sdA))
+  dplyr::select(-c(sdS, sdA))
 View(full_data)
 
+full_data <- full_data %>% 
+  filter(Location == "Varari")
+
+full_data1 <- full_data[,c(1:4,6:9,11,13)]
+
+all_nut_wide <- pivot_wider(
+  data = full_data1,
+  names_from = Parameters,
+  values_from = 6:10,
+  names_glue = "{.value}_{Parameters}"
+)
 
 ## Write csv ####
-write_csv(full_data, here("Coral_Data","Nutrients_Processed_All.csv"))
+#write_csv(full_data, here("data","Nutrients_Processed_All.csv"))
+#write_csv(all_nut_wide, here("data","Nutrients_Processed_All_Wide.csv"))
 
 

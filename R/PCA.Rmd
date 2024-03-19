@@ -33,7 +33,7 @@ shore_dist <- left_join(shore_dist, depth, by = "CowTagID")
 nut_wide <- pivot_wider(
   data = nut,
   names_from = Parameters,
-  values_from =3:9,
+  values_from = 3:9,
   names_glue = "{.value}_{Parameters}"
 )
 nut_wide_no_seep <- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
