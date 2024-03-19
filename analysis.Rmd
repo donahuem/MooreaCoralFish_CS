@@ -32,6 +32,7 @@ library(ggplot2)
 library(GGally)
 library(ggeffects)
 library(arm) #discrete hist
+library(MuMIn) #dredge
 ```
 
 ```{r load data, echo=FALSE}
@@ -260,6 +261,45 @@ summary(anova_PAC)
 ```
 
 ### Models
+
+```{r KE dredge}
+all_data_wide <- left_join(response_data, nut_wide, by = join_by(CowTagID))
+PAC_model_data <- na.omit(all_data_wide %>% 
+        filter(Species == "Pocillopora acuta"))
+PAC_big_model <- 
+  glm(Percent_Change ~ CVSeasonal_Phosphate_umolL + 
+        shore_dist_m + MeanSeasonal_Silicate_umolL + Minimum_pH, 
+      data = PAC_model_data, na.action = na.pass)
+
+PAC_big_model_dredge <- dredge(PAC_big_model)
+model.sel(PAC_big_model_dredge)
+```
+
+```{r KE Dredge 2}
+PAC.avg = model.avg(PAC_big_model_dredge, delta < 4)
+summary(PAC.avg)
+```
+
+OK 
+
+```{r KE Dredge PRU}
+PRU_model_data <- na.omit(all_data_wide %>% 
+        filter(Species == "Porites rus" & Cage_Uncaged == "C"))
+PRU_big_model <- 
+  glm(Percent_Change ~ CVSeasonal_Phosphate_umolL + 
+        shore_dist_m + MeanSeasonal_Silicate_umolL + Maximum_pH, 
+      data = PAC_model_data, na.action = na.pass)
+
+PRU_big_model_dredge <- dredge(PRU_big_model)
+model.sel(PRU_big_model_dredge)
+```
+
+```{r}
+PRU.avg = model.avg(PRU_big_model_dredge, delta < 4)
+summary(PRU.avg)
+```
+
+
 ```{r}
 bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>%                     filter(Species == "Pocillopora acuta" 
                            & Cage_Uncaged == "C"))
@@ -368,6 +408,7 @@ anova(bw_m1_PRU)
 summary(bw_m1_PRU)
 ```
 Same models as before, but now with silicate instead, because the range in SiO32- was an order of magnitude higher on the reef than salinity allowing for a higher signal to noise ratio. I also used maximum silicate, as it is more indicative of the maximum amount of groundwater experienced
+
 ```{r starting models silicate, eval = FALSE, echo=FALSE}
 #For models of only caged corals, we are running with Genotype as covariate instead of random effect
 #Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
@@ -434,81 +475,7 @@ symb_m1_PRU <- lmer(Normalized_Symbiont_Counts ~ CVSeasonal + (1 | Genotype) + C
 anova(symb_m1_PRU)
 summary(symb_m1_PRU)
 ```
-Nothing significant there
 
-
-IGNORE THESE PLOTS:
-```{r proposal plots all bad very bad, eval = FALSE, echo=FALSE}
-gg_data <- all_data %>% 
-  filter(Parameters == "Salinity")
-
-gg_data <- merge(gg_data, FCM_Join[, c("Placement_Code", "sym_FSC.Events")], by = "Placement_Code")
-
-ggplot(gg_data, aes(x = CVSeasonal, y = Percent_Change, color = factor(Cage_Uncaged, labels = c("Uncaged", "Partially Caged", "Caged")))) +
-  geom_point() + # add points
-  geom_smooth(data = subset(gg_data, Species == "PRU"), method = "lm") + # only PRU was significant
-  scale_color_fish_d(option = "Coryphaena_hippurus") +
-  labs(
-    title = "Percent Change in Buoyant Weight vs Salinity Variability",
-    x = "CV Salinity",
-    y = "Percent Change in Buoyant Weight",
-    color = "Cage Status"
-  ) +
-  facet_wrap(~Species)
-
-gg_data_no <- gg_data[!(gg_data$Placement_Code == "PRU V17 C"), ]
-
-ggplot(gg_data_no, aes(x = CVSeasonal, y = Normalized_Symbiont_Counts,)) +
-  geom_point(aes(color=Cage_Uncaged)) +  # Add points
-  scale_color_fish_d(option = "Coryphaena_hippurus")+
-  labs(title = "Number of Symbionts vs Salinity Variability",
-       x = "CV Salinity",
-       y = "Symbionts") +
-  facet_wrap(~Species)
-
-#NOW I'M ONLY LOOKING AT CAGED:
-gg_data <- all_data %>% 
-  filter(Parameters == "Silicate_umolL") %>% 
-  filter(Cage_Uncaged == "C")
-
-ggplot(gg_data, aes(x = CVSeasonal, y = Change_Over_Area)) +
-  geom_point(aes(color=Species)) +  # Add points
-  labs(title = "Percent Change in Buoyant Weight vs Salinity Variability",
-       x = "CV Silicate",
-       y = "Change Over Area")
-
-```
-
-```{r more symbiont in caged or no, eval = FALSE, echo=FALSE}
-#IS C MORE LIKELY TO HAVE BEEN BIGGER THAN A OR B
-sym_weight <- read.csv("data/Symbiont_filter_weight.csv")
-sym_weight$Placement_Code <- sym_weight$Placement
-sym_weight$Symbiont_dry_weight <- as.numeric(sym_weight$Symbiont_dry_weight)
-sym_weight <- subset(sym_weight, Symbiont_dry_weight >= 0 & !is.na(Symbiont_dry_weight))
-sym_weight <- merge(sym_weight, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
-
-# Example boxplot
-boxplot(Symbiont_dry_weight ~ Cage_Uncaged, data = sym_weight)
-
-# Create subsets for each 'Cage_Uncaged' value
-subset_A <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'A']
-subset_B <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'B']
-subset_C <- sym_weight$Symbiont_dry_weight[sym_weight$Cage_Uncaged == 'C']
-
-# Calculate proportions for each subset
-prop_A <- mean(subset_A > 0.5, na.rm = TRUE)
-prop_B <- mean(subset_B > 0.5, na.rm = TRUE)
-prop_C <- mean(subset_C > 0.5, na.rm = TRUE)
-
-# Perform proportion test for 'C' vs 'A'
-prop_test_result <- prop.test(c(sum(subset_C > 0.5), sum(subset_A > 0.5)), c(length(subset_C), length(subset_A)))
-
-# Print the proportions and test result
-cat("Proportion for 'C':", prop_C, "\n")
-cat("Proportion for 'A':", prop_A, "\n")
-print(prop_test_result)
-
-```
 
 
 
