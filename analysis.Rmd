@@ -37,10 +37,10 @@ library(MuMIn) #dredge
 
 ```{r load data, echo=FALSE}
 #explanatory data
-all_nut <- read.csv("data/Nutrients_Processed_All.csv")
+all_nut <- read.csv("data/All_Nutrients_Processed.csv")
 nut <- read.csv("data/March_nutrients_processed.csv")
 nut_wide <- read.csv("data/Nutrient_data_wide.csv")
-explanatory <- read.csv("data/Explanatory_variables.csv")
+explanatory_seasonal <- read.csv("data/Explanatory_variables.csv")
 
 #Response data
 sa <- read.csv("data/Surface_Area.csv")
@@ -53,6 +53,19 @@ FCM <- read.csv("data/FCM_tidy.csv") %>%
 #metadata
 PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") 
 PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
+```
+
+```{r explanatory}
+all_nut_long <- pivot_longer(
+  data = all_nut,
+  cols = c(Minimum_Salinity:CV_Ammonia_umolL)) 
+names(all_nut_long)[names(all_nut_long) == "name"] <- "Parameter"
+
+join <- explanatory_seasonal[,c(2:7)]
+join <- unique(join)
+
+explanatory_all <- left_join(join,all_nut_long, by = join_by(CowTagID))
+explanatory_all_wide <- left_join(join, all_nut,by = join_by(CowTagID))
 ```
 
 ```{r response variables, echo=FALSE}
@@ -86,16 +99,24 @@ PAC_response_data_caged <- PAC_response_data %>%
   filter(Cage_Uncaged == "C")
 ```
 
-```{r all data, warning=FALSE}
+```{r all data seasonal, warning=FALSE}
 #now make an all data that has both explanatory and response variables:
-all_data <- left_join(response_data, explanatory, by = join_by(CowTagID))
+all_data_seasonal <- left_join(response_data, explanatory_seasonal, by = join_by(CowTagID))
+#suppress warnings because there will be a many-to-many relationship between x and y
+all_data_seasonal$Genotype <- as.factor(all_data_seasonal$Genotype)
+all_PAC_data_seasonal <- all_data_seasonal %>% 
+  filter(Species == "Pocillopora acuta")
+```
+
+```{r all data both seasons, warning=FALSE}
+#now make an all data that has both explanatory and response variables:
+all_data <- left_join(response_data, explanatory_all, by = join_by(CowTagID))
 #suppress warnings because there will be a many-to-many relationship between x and y
 all_data$Genotype <- as.factor(all_data$Genotype)
 all_PAC_data <- all_data %>% 
   filter(Species == "Pocillopora acuta")
 
-all_PRU_data <- all_data %>% 
-  filter(Species == "Porites rus")
+all_data_wide <- left_join(response_data, explanatory_all_wide, by = join_by(CowTagID))
 ```
 
 ## Data Exploration:
@@ -105,7 +126,7 @@ Data exploration focuses on the following points:
 3. Independence (Relationships between response and explanatory variables) 
 
 ```{r response data hist, fig.width=10, fig.height=10, echo=FALSE}
-png("output/response_data_hist.png", width = 1100, height = 1100)
+#png("output/response_data_hist.png", width = 1100, height = 1100)
 par(mfrow = c(4,4), oma=c(1,1,3,1))
 hist(PAC_response_data$Change_Over_Area, main="Change Over Area", col="lightblue", xlab="Change_Over_Area")
 hist_columns <- c(7:13)
@@ -122,12 +143,35 @@ for (i in 1:length(hist_columns)) {
 }
 main_title <- "Response Data Exploration"
 title(main = main_title, outer = TRUE)
-dev.off()
+#dev.off()
 ```
 
 Ok so FSC.Events are both pretty right-skewed. CN says log10 transform these.
 
-```{r raw growth data plots, echo=FALSE}
+```{r wet season raw growth data plots, echo=FALSE, fig.width=15, fig.height=15}
+species <- unique(all_data_seasonal$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data_seasonal %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = Percent_Change)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+  ggsave(filename = paste("output/wet_raw_growth_data_response_plot_", sp, ".png", sep = ""),
+         plot = plot, 
+         width = 15, height = 15)
+}
+```
+Now, doing this again but for both seasons combined:
+```{r wet season raw growth data plots, fig.width=15, fig.height=15}
 species <- unique(all_data$Species)
 for (sp in species) {
   # Filter data for the current species and only caged
@@ -144,9 +188,9 @@ for (sp in species) {
     theme_bw()
   # Print and save the plot
   print(plot)
-  ggsave(filename = paste("output/raw_growth_data_response_plot_", sp, ".png", sep = ""),
-         plot = plot, 
-         width = 15, height = 15)
+  #ggsave(filename = paste("output/raw_growth_data_response_plot_", sp, ".png", sep = ""),
+  #       plot = plot, 
+  #       width = 15, height = 15)
 }
 ```
 
@@ -263,13 +307,12 @@ summary(anova_PAC)
 
 ### Models
 
-```{r KE dredge}
-all_data_wide <- left_join(response_data, nut_wide, by = join_by(CowTagID))
+```{r PAC dredge}
 PAC_model_data <- na.omit(all_data_wide %>% 
         filter(Species == "Pocillopora acuta"))
 PAC_big_model <- 
-  glm(Percent_Change ~ CVSeasonal_Phosphate_umolL + 
-        shore_dist_m + MeanSeasonal_Silicate_umolL + Minimum_pH, 
+  glm(Percent_Change ~ CV_Phosphate_umolL + 
+        shore_dist_m + Mean_Silicate_umolL + Minimum_pH, 
       data = PAC_model_data, na.action = na.pass)
 
 PAC_big_model_dredge <- dredge(PAC_big_model)

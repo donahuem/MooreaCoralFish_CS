@@ -17,6 +17,7 @@ library(grid) #for as.grob
 ```{r tidy data}
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 nut <- read.csv("data/March_nutrients_processed.csv")
+all_nut <- read.csv("data/Nutrients_Processed_All.csv")
 shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
 seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv")
 depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
@@ -51,6 +52,33 @@ meta_columns <- names(nut_wide_no_seep)[c(1:6)]
 
 pca.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns, mean_columns, CV_columns)])
 #keeping V13 in this ex
+```
+
+```{r}
+all_nut_wide <- pivot_wider(
+  data = all_nut,
+  names_from = Parameters,
+  values_from = 7:13,
+  names_glue = "{.value}_{Parameters}"
+)
+
+all_nut_wide <- all_nut_wide %>% 
+  filter(Location == "Varari")
+
+nut_wide_no_seep <- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
+
+minimum_columns <- names(nut_wide)[grepl("Minimum_", names(nut_wide)) & 
+                                     grepl("Salinity|Temperature|pH", names(nut_wide))]
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(nut_wide))]
+mean_columns <- names(nut_wide)[grepl("MeanSeasonal_", names(nut_wide)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(nut_wide))]
+CV_columns <- names(nut_wide)[grepl("CVSeasonal_", names(nut_wide), names(nut_wide))]
+meta_columns <- names(nut_wide_no_seep)[c(1:6)]
+
+
+
+pca.data <- na.omit(nut_wide_no_seep[, c(maximum_columns, minimum_columns, mean_columns, CV_columns)])
 ```
 
 
