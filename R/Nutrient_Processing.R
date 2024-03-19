@@ -143,7 +143,7 @@ cv_chem_data <- cv_chem_data %>%
 min_max_data <- left_join(min_data, max_data, by = join_by(Location, CowTagID))
 
 Summarized_chem_data <- left_join(min_max_data, cv_chem_data, by = join_by(Location, CowTagID))
-Summarized_chem_data<- Summarized_chem_data[,c(2:34)]
+Summarized_chem_data<- Summarized_chem_data[,c(2:37)]
 
 Summarized_chem_data$Time <- "All"
 
@@ -188,7 +188,7 @@ cv_chem_data_wet <- cv_chem_data_wet %>%
 min_max_data_wet <- left_join(min_data_wet, max_data_wet, by = join_by(Location, CowTagID))
 
 Summarized_chem_data_wet <- left_join(min_max_data_wet, cv_chem_data_wet, by = join_by(Location, CowTagID))
-Summarized_chem_data_wet <- Summarized_chem_data_wet[,c(2:34)]
+Summarized_chem_data_wet <- Summarized_chem_data_wet[,c(2:37)]
 
 Summarized_chem_data_wet$Time <- "Wet"
 
