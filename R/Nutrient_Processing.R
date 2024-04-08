@@ -121,6 +121,12 @@ mean_data <- ReducedChemData %>%
   summarise_at(vars(Salinity:Ammonia_umolL), .funs = mean, na.rm = T) %>% 
   rename_with(~ paste0("Mean_", .), Salinity:Ammonia_umolL)
 
+mean_low_data <- ReducedChemData %>%
+  filter(Tide == "Low") %>% 
+  group_by(Location, CowTagID) %>%
+  summarise_at(vars(Salinity:Ammonia_umolL), .funs = mean, na.rm = T) %>% 
+  rename_with(~ paste0("Low_Tide_Mean_", .), Salinity:Ammonia_umolL)
+
 sd_data <- ReducedChemData %>%
   group_by(Location, CowTagID) %>% 
   summarise_at(vars(Salinity:Ammonia_umolL), .funs = sd, na.rm = T) %>% 
@@ -143,7 +149,8 @@ cv_chem_data <- cv_chem_data %>%
 min_max_data <- left_join(min_data, max_data, by = join_by(Location, CowTagID))
 
 Summarized_chem_data <- left_join(min_max_data, cv_chem_data, by = join_by(Location, CowTagID))
-Summarized_chem_data<- Summarized_chem_data[,c(2:37)]
+Summarized_chem_data <- left_join(Summarized_chem_data, mean_low_data, by = join_by(Location, CowTagID))
+Summarized_chem_data<- Summarized_chem_data[,c(2:46)]
 
 Summarized_chem_data$Time <- "All"
 
@@ -160,6 +167,12 @@ min_data_wet <- WetChemData %>%
   group_by(Location, CowTagID) %>%
   summarise_at(vars(Salinity:Ammonia_umolL), .funs = min, na.rm = T) %>% 
   rename_with(~ paste0("Minimum_", .), Salinity:Ammonia_umolL)
+
+mean_low_data_wet <- ReducedChemData %>%
+  filter(Tide == "Low") %>% 
+  group_by(Location, CowTagID) %>%
+  summarise_at(vars(Salinity:Ammonia_umolL), .funs = mean, na.rm = T) %>% 
+  rename_with(~ paste0("Low_Tide_Mean_", .), Salinity:Ammonia_umolL)
 
 mean_data_wet <- WetChemData %>%
   group_by(Location, CowTagID) %>%
@@ -188,7 +201,8 @@ cv_chem_data_wet <- cv_chem_data_wet %>%
 min_max_data_wet <- left_join(min_data_wet, max_data_wet, by = join_by(Location, CowTagID))
 
 Summarized_chem_data_wet <- left_join(min_max_data_wet, cv_chem_data_wet, by = join_by(Location, CowTagID))
-Summarized_chem_data_wet <- Summarized_chem_data_wet[,c(2:37)]
+Summarized_chem_data_wet <- left_join(Summarized_chem_data_wet, mean_low_data_wet, by = join_by(Location, CowTagID))
+Summarized_chem_data_wet <- Summarized_chem_data_wet[,c(2:46)]
 
 Summarized_chem_data_wet$Time <- "Wet"
 
