@@ -1,5 +1,5 @@
 ---
-title: "Coral"
+title: "Coral Growth and Symbionts Analysis"
 author: "Callie Stephenson"
 date: "2023-08-29"
 output: github_document
@@ -33,6 +33,7 @@ library(GGally)
 library(ggeffects)
 library(arm) #discrete hist
 library(MuMIn) #dredge
+library(effects) #effects plots for dredged models
 ```
 
 ```{r load data, echo=FALSE}
@@ -363,35 +364,38 @@ summary(anova_PAC)
 #### Random effect of genotype
 
 ```{r columns to dredge}
-minimum_columns <- names(all_data_wide)[grepl("Minimum_", names(all_data_wide)) & 
-                                     grepl("Salinity|Temperature|pH", names(all_data_wide))]
-maximum_columns <- names(all_data_wide)[grepl("Maximum_", names(all_data_wide)) & 
-                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
-mean_columns <- names(all_data_wide)[grepl("Mean_", names(all_data_wide)) & 
-                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
+#minimum_columns <- names(all_data_wide)[grepl("Minimum_", names(all_data_wide)) & 
+#                                     grepl("Salinity|Temperature|pH", names(all_data_wide))]
+#maximum_columns <- names(all_data_wide)[grepl("Maximum_", names(all_data_wide)) & 
+#                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
+#mean_columns <- names(all_data_wide)[grepl("Mean_", names(all_data_wide)) & 
+#                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
 CV_columns <- names(all_data_wide)[grepl("CV_", names(all_data_wide), names(all_data_wide))]
 
 mean_low_columns <- names(all_data_wide)[grepl("Low_Tide_Mean_", names(all_data_wide), names(all_data_wide))]
 
-dredge.data <- na.omit(all_data_wide[, c(maximum_columns, 
-                                    minimum_columns,
-                                    mean_columns, #removed bc not enough data for the amount of variables
-                                    CV_columns)])
+#dredge.data <- na.omit(all_data_wide[, c(maximum_columns, 
+#                                    minimum_columns,
+#                                    mean_columns, #removed bc not enough data for the amount of variables
+#                                    CV_columns)])
 ```
 
 
-```{r PAC dredge for CV}
+```{r PAC Growth dredge for CV, warning=FALSE, message=FALSE}
 PAC_model_data <- na.omit(all_data_wide %>% 
         filter(Species == "Pocillopora acuta"))
 
 # Extract column names for filtering
-selected_columns <- c("Percent_Change", CV_columns)
+selected_columns <- c("Percent_Change", "Genotype", "Cage_Uncaged", CV_columns)
 
 # Filter the data and select the relevant columns
 PAC_cv_model_data <- PAC_model_data[, selected_columns]
 
 # Build the GLM model
-PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+PAC_cv_model <- lmer(Percent_Change ~ CV_Salinity + CV_Temperature + CV_TA + CV_pH + CV_Phosphate_umolL + CV_NN_umolL + CV_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_cv_model_data, 
+                                 na.action = na.pass)
 
 PAC_cv_model_dredge <- dredge(PAC_cv_model)
 #model.sel(PAC_cv_model_dredge)
@@ -399,8 +403,21 @@ PAC.avg_cv_model = model.avg(PAC_cv_model_dredge, delta < 4)
 summary(PAC.avg_cv_model)
 ```
 
-OK so that's for a coefficient of variance hypothesis. What about mean low!
-```{r PAC Dredge Mean Low 1}
+OK so that's for a coefficient of variance hypothesis. It shows that the CV for pH, TA, and Temperature matter, but not the nutrients! Our best model includes pH, Salinity, TA, and Temperature. Here's those effects plots:
+```{r effect plots}
+CV_model_effects_plots <- lmer(Percent_Change ~ CV_Salinity + 
+                                 CV_Temperature + 
+                                 CV_TA + 
+                                 CV_pH + 
+                                 (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_cv_model_data, 
+                                 na.action = na.pass)
+
+plot(allEffects(CV_model_effects_plots))
+```
+
+What about mean low!
+```{r PAC Growth Dredge Mean Low 1, warning=FALSE, message=FALSE}
 PAC_model_data <- na.omit(all_data_wide %>% 
         filter(Species == "Pocillopora acuta"))
 
@@ -410,197 +427,103 @@ selected_columns <- c("Percent_Change","Genotype", "Cage_Uncaged", mean_low_colu
 # Filter the data and select the relevant columns
 PAC_low_tide_model_data <- PAC_model_data[, selected_columns]
 
-# Build the GLM model
-PAC_mean_low_tide_model <- glmer(Percent_Change ~ . + (1 | Genotype) + (1 | Cage_Uncaged), 
+# Build the big model
+#PAC_mean_low_tide_model <- lmer(Percent_Change ~ . + (1 | Genotype) + (1 | Cage_Uncaged), 
+#                                 data = PAC_low_tide_model_data, 
+#                                 na.action = na.pass)
+
+PAC_mean_low_tide_model <- lmer(Percent_Change ~ Low_Tide_Mean_Salinity + Low_Tide_Mean_Temperature + Low_Tide_Mean_TA + Low_Tide_Mean_pH + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
                                  data = PAC_low_tide_model_data, 
                                  na.action = na.pass)
 
 PAC_low_tide_model_dredge <- dredge(PAC_mean_low_tide_model)
 #model.sel(PAC_low_tide_model_dredge)
-PAC.avg_low_tide = model.avg(PAC_low_tide_model_dredge, delta < 4)
+PAC.avg_low_tide = model.avg(PAC_low_tide_model_dredge, delta < 5)
+summary(PAC.avg_low_tide)
+```
+Note that there are many models with a similar Akaike weight. Note that the low tide (high SGD) values of Ammonia, Nitrate/Nitrite, NNP ratio, Phosphate, and salinity are all in most of the best models, and so they all have support from the data. Use the best model to report coefficients / effect size plots / etc. 
+
+```{r}
+Low_tide_PAC_growth_model_effects_plots <- lmer(Percent_Change ~ Low_Tide_Mean_Phosphate_umolL + 
+                                 (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_low_tide_model_data, 
+                                 na.action = na.pass)
+
+plot(allEffects(Low_tide_PAC_growth_model_effects_plots))
+```
+
+
+```{r PAC Symbionts CV model, message=FALSE, warning=FALSE}
+PAC_model_data <- na.omit(all_data_wide %>% 
+        filter(Species == "Pocillopora acuta"))
+
+# Extract column names for filtering
+selected_columns <- c("FSC.Events_per_cm_2", "Genotype", "Cage_Uncaged", CV_columns)
+
+# Filter the data and select the relevant columns
+PAC_cv_model_data <- PAC_model_data[, selected_columns]
+
+# Build the GLM model
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+PAC_cv_model <- lmer(log(FSC.Events_per_cm_2) ~ CV_Salinity + CV_Temperature + CV_TA + CV_pH + CV_Phosphate_umolL + CV_NN_umolL + CV_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_cv_model_data, 
+                                 na.action = na.pass)
+
+PAC_cv_model_dredge <- dredge(PAC_cv_model)
+#model.sel(PAC_cv_model_dredge)
+PAC.avg_cv_model = model.avg(PAC_cv_model_dredge, delta < 2)
+#I only have a model that includes everything! You take out one, the model gets significantly worse. I don't fully know how to interpret this right now, espeically since only phosphate is coming out significant here...
+summary(PAC.avg_cv_model)
+```
+
+Megan WHAT is going on!!!! Only the most complicated model has support, but even in that, only Phosphate has significant effects?
+
+```{r CV Symbiont Model Effects}
+CV_PAC_symb_model_effects_plots <- lmer(log(FSC.Events_per_cm_2) ~ CV_Phosphate_umolL + 
+                                 (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_cv_model_data, 
+                                 na.action = na.pass)
+
+plot(allEffects(CV_PAC_symb_model_effects_plots))
+```
+
+
+```{r PAC Symbionts Mean Low model, message=FALSE, warning=FALSE}
+PAC_model_data <- na.omit(all_data_wide %>% 
+        filter(Species == "Pocillopora acuta"))
+
+# Extract column names for filtering
+selected_columns <- c("FSC.Events_per_cm_2","Genotype", "Cage_Uncaged", mean_low_columns)
+
+# Filter the data and select the relevant columns
+PAC_low_tide_model_data <- PAC_model_data[, selected_columns]
+
+# Build the big model
+#PAC_mean_low_tide_model <- lmer(Percent_Change ~ . + (1 | Genotype) + (1 | Cage_Uncaged), 
+#                                 data = PAC_low_tide_model_data, 
+#                                 na.action = na.pass)
+
+PAC_mean_low_tide_model <- lmer(log(FSC.Events_per_cm_2) ~ Low_Tide_Mean_Salinity + Low_Tide_Mean_Temperature + Low_Tide_Mean_TA + Low_Tide_Mean_pH + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_low_tide_model_data, 
+                                 na.action = na.pass)
+
+PAC_low_tide_model_dredge <- dredge(PAC_mean_low_tide_model)
+#model.sel(PAC_low_tide_model_dredge)
+PAC.avg_low_tide = model.avg(PAC_low_tide_model_dredge, delta < 1) #I had to make it all the way to 10 to include more than the most complex model. I don't really know how to interpret that!
 summary(PAC.avg_low_tide)
 ```
 
-Note that there are many models with a similar Akaike weight. Note that the low tide (high SGD) values of Ammonia, Nitrate/Nitrite, NNP ratio, Phosphate, and salinity are all in most of the best models, and so they all have support from the data. Use the best model to report coefficients / effect size plots / etc. 
+Now, for mean low tide data, nothing is significant!!!! But only the most complicated model has support. I don't know how this means I should interpret the findings. 
 
-
-
-```{r STOP HERE}
-bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>%                     filter(Species == "Pocillopora acuta" 
-                           & Cage_Uncaged == "C"))
-anova(bw_caged_PAC)
-
-data <- all_data %>% 
-                     filter(Species == "Pocillopora acuta" 
-                           & Cage_Uncaged == "C" 
-                           & Parameter == "pc1") 
-#this removes V13 because it doesn't have shore dist
-ggplot(data, aes(x = X._loss, y = Percent_Change))+
-  geom_point(aes(color = value))+
-  scale_color_fish(option = "Coryphaena_hippurus")+
-  geom_smooth(method = "lm", formula = 'y~poly(x,2)')+
-  labs(title="Growth of Pocillopora acuta colonies against distance from shore")
-```
-So this is suggesting that distance from shore is significant, let's see if SGD is too:
 ```{r}
-bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + value + (1 | Genotype), data = all_data %>% 
-                     filter(Species == "Pocillopora acuta" 
-                           & Cage_Uncaged == "C" 
-                           & Parameter == "pc1") ) 
-anova(bw_caged_PAC)
+Low_tide_PAC_symb_model_effects_plots <- lmer(log(FSC.Events_per_cm_2) ~ Low_Tide_Mean_NN_umolL + 
+                                                Low_Tide_Mean_pH + 
+                                                Low_Tide_Mean_Phosphate_umolL +
+                                 (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_low_tide_model_data, 
+                                 na.action = na.pass)
+
+plot(allEffects(Low_tide_PAC_symb_model_effects_plots))
 ```
-
-
-Now that we've done our data exploration, let's make the data frame needed to build some models!
-
-```{r starting models with megan}
-#For models of only caged corals, we are running with Genotype as covariate instead of random effect
-#Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
-#for example, see how this is singular:
-
-bw_m1_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "Pocillopora acuta" & Cage_Uncaged == "C")) 
-anova(bw_m1_caged_PAC)
-summary(bw_m1_caged_PAC)
-
-##plots with megan
-ggplot(all_PAC_data) +
-  geom_point(data = subset(all_PAC_data, Cage_Uncaged == "C"),
-             aes(x = Genotype, y = Percent_Change, color = shore_dist_m)) +
-  scale_color_fish(option = "Coryphaena_hippurus")
-#this shore distance looks like it could be a trend
-
-#variance components analysis within genotype and between genotype variance
-#looking at all the variance in the data, looking at the grand mean vs. the mean for the random effects
-#how much is between vs within genotype variance
-bw_m1_caged_PRU <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "Porites rus" & Cage_Uncaged == "C")) 
-anova(bw_m1_caged_PRU)
-summary(bw_m1_caged_PRU)
-
-ggplot(all_PRU_data) +
-  geom_point(data = subset(all_PRU_data, Cage_Uncaged == "C"),
-             aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
-  scale_color_fish(option = "Coryphaena_hippurus")
-```
-```{r WHY YOU GET SINGULARITY IN ACUTA, eval = FALSE, echo=FALSE}
-dataPAC = all_data %>%
-  filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C")
-
-dataPRU = all_data %>% 
-  filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C")
-
-ggplot(dataPAC) +
-  geom_point(aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
-  scale_color_fish(option = "Coryphaena_hippurus")
-#NEARLY NO VARIATION ATTRIBUTABLE TO GENOTYPE
-
-ggplot(dataPRU) +
-  geom_point(aes(x = Genotype, y = Percent_Change, color = shore_dist_m))+
-  scale_color_fish(option = "Coryphaena_hippurus")
-
-#Q from MJD for KE:
-#if you get an estimate of 0 for your random effect what do you do
-#do you keep bc the structure is important
-#or do you drop because the model becomes simpler
-
-#To move forward: drop the random effect for PAC models.
-```
-
-```{r starting models, eval = FALSE, echo=FALSE}
-###
-#Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
-bw_m1_caged_PAC <-lm(Percent_Change ~ CVSeasonal + shore_dist_m,
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
-anova(bw_m1_caged_PAC)
-
-bw_m1_caged_PRU <-lmer(Percent_Change ~ CVSeasonal + shore_dist_m + (1 | Genotype),
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
-anova(bw_m1_caged_PRU)
-
-#For models of all corals, we are running with Genotype as a random effect
-bw_m1_PAC <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC"))
-anova(bw_m1_PAC)
-
-bw_m1_PRU <- lmer(Percent_Change ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU"))
-anova(bw_m1_PRU)
-summary(bw_m1_PRU)
-```
-Same models as before, but now with silicate instead, because the range in SiO32- was an order of magnitude higher on the reef than salinity allowing for a higher signal to noise ratio. I also used maximum silicate, as it is more indicative of the maximum amount of groundwater experienced
-
-```{r starting models silicate, eval = FALSE, echo=FALSE}
-#For models of only caged corals, we are running with Genotype as covariate instead of random effect
-#Cannot run as random effect without singularity (as there is only one occurance of genotype for every occurence of the nutrient parameter)
-#for example, see how this is singular:
-bw_m1_caged_PAC <-lmer(Percent_Change ~ Maximum + (1 | Genotype), data = all_data %>% 
-                    filter(Parameters == "Silicate_umolL" & Species == "PAC" & Cage_Uncaged == "C")) 
-anova(bw_m1_caged_PAC)
-                    
-###
-#Cannot run as random effect without singularity (as there is only one occurrence of genotype for every occurrence of the nutrient parameter)
-bw_m1_caged_PAC <-lm(Percent_Change ~ Maximum + Genotype,
-                  data = all_data %>% 
-                    filter(Parameters == "Silicate_umolL" & 
-                             Species == "PAC" & 
-                             Cage_Uncaged == "C"))
-anova(bw_m1_caged_PAC)
-
-bw_m1_caged_PRU <-lm(Percent_Change ~ Maximum + Genotype,
-                  data = all_data %>% 
-                    filter(Parameters == "Silicate_umolL" & 
-                             Species == "PRU" & 
-                             Cage_Uncaged == "C"))
-anova(bw_m1_caged_PRU)
-
-#For models of all corals, we are running with Genotype as a random effect
-bw_m1_PAC <- lmer(Percent_Change ~ Maximum + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Silicate_umolL" & 
-                             Species == "PAC"))
-anova(bw_m1_PAC)
-summary(bw_m1_PAC)
-
-bw_m1_PRU <- lmer(Percent_Change ~ Maximum + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Silicate_umolL" & 
-                             Species == "PRU"))
-anova(bw_m1_PRU)
-summary(bw_m1_PRU)
-```
-This also only sees a correlation between all (not just caged) change in buoyant weight for PRU. PAC is not significant.
-
-Now let's see those same models with symbiont counts
-```{r starting models symb, eval = FALSE, echo=FALSE}
-#again running with Genotype as covariate when only 
-symb_m1_caged_PAC <-lm(Normalized_Symbiont_Counts ~ CVSeasonal + Genotype,
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC" & Cage_Uncaged == "C"))
-anova(symb_m1_caged_PAC)
-
-symb_m1_caged_PRU <-lm(Normalized_Symbiont_Counts ~ CVSeasonal + Genotype,
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU" & Cage_Uncaged == "C"))
-anova(symb_m1_caged_PRU)
-
-#but with all the corals we can use Genotype as random effect
-symb_m1_PAC <- lmer(Normalized_Symbiont_Counts ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PAC"))
-anova(symb_m1_PAC)
-
-symb_m1_PRU <- lmer(Normalized_Symbiont_Counts ~ CVSeasonal + (1 | Genotype) + Cage_Uncaged, 
-                  data = all_data %>% 
-                    filter(Parameters == "Salinity" & Species == "PRU"))
-anova(symb_m1_PRU)
-summary(symb_m1_PRU)
-```
-
-
 
 
