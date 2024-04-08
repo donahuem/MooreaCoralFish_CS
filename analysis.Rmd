@@ -42,6 +42,10 @@ nut <- read.csv("data/March_nutrients_processed.csv")
 nut_wide <- read.csv("data/Nutrient_data_wide.csv")
 explanatory_seasonal <- read.csv("data/Explanatory_variables.csv")
 
+#explanatory 2
+cv_low_wet <- read.csv("data/Wet_Nutrients_Processed_CV_Low.csv")
+cv_low_all <- read.csv("data/All_Nutrients_Processed_CV_Low.csv")
+
 #Response data
 sa <- read.csv("data/Surface_Area.csv")
 BW <- read.csv("data/BW_tidy.csv") 
@@ -358,7 +362,7 @@ summary(anova_PAC)
 #### Need to add a caged effect
 #### Random effect of genotype
 
-```{r}
+```{r columns to dredge}
 minimum_columns <- names(all_data_wide)[grepl("Minimum_", names(all_data_wide)) & 
                                      grepl("Salinity|Temperature|pH", names(all_data_wide))]
 maximum_columns <- names(all_data_wide)[grepl("Maximum_", names(all_data_wide)) & 
@@ -367,6 +371,8 @@ mean_columns <- names(all_data_wide)[grepl("Mean_", names(all_data_wide)) &
                                   !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
 CV_columns <- names(all_data_wide)[grepl("CV_", names(all_data_wide), names(all_data_wide))]
 
+mean_low_columns <- names(all_data_wide)[grepl("Low_Tide_Mean_", names(all_data_wide), names(all_data_wide))]
+
 dredge.data <- na.omit(all_data_wide[, c(maximum_columns, 
                                     minimum_columns,
                                     mean_columns, #removed bc not enough data for the amount of variables
@@ -374,56 +380,52 @@ dredge.data <- na.omit(all_data_wide[, c(maximum_columns,
 ```
 
 
-```{r PAC dredge}
+```{r PAC dredge for CV}
 PAC_model_data <- na.omit(all_data_wide %>% 
         filter(Species == "Pocillopora acuta"))
-#PAC_big_model <- 
-#  glm(Percent_Change ~ CV_Phosphate_umolL + 
-#        shore_dist_m + Mean_Silicate_umolL + Minimum_pH, 
-#      data = PAC_model_data, na.action = na.pass)
 
 # Extract column names for filtering
-selected_columns <- c("Percent_Change", mean_columns, CV_columns)
+selected_columns <- c("Percent_Change", CV_columns)
 
 # Filter the data and select the relevant columns
-PAC_model_data <- PAC_model_data[, selected_columns]
+PAC_cv_model_data <- PAC_model_data[, selected_columns]
 
 # Build the GLM model
-PAC_big_model <- glm(Percent_Change ~ ., data = PAC_model_data, na.action = na.pass)
+PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
 
-PAC_big_model_dredge <- dredge(PAC_big_model)
-model.sel(PAC_big_model_dredge)
+PAC_cv_model_dredge <- dredge(PAC_cv_model)
+#model.sel(PAC_cv_model_dredge)
+PAC.avg_cv_model = model.avg(PAC_cv_model_dredge, delta < 4)
+summary(PAC.avg_cv_model)
 ```
 
-```{r KE Dredge 2}
-PAC.avg = model.avg(PAC_big_model_dredge, delta < 4)
-summary(PAC.avg)
+OK so that's for a coefficient of variance hypothesis. What about mean low!
+```{r PAC Dredge Mean Low 1}
+PAC_model_data <- na.omit(all_data_wide %>% 
+        filter(Species == "Pocillopora acuta"))
+
+# Extract column names for filtering
+selected_columns <- c("Percent_Change","Genotype", "Cage_Uncaged", mean_low_columns)
+
+# Filter the data and select the relevant columns
+PAC_low_tide_model_data <- PAC_model_data[, selected_columns]
+
+# Build the GLM model
+PAC_mean_low_tide_model <- glmer(Percent_Change ~ . + (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_low_tide_model_data, 
+                                 na.action = na.pass)
+
+PAC_low_tide_model_dredge <- dredge(PAC_mean_low_tide_model)
+#model.sel(PAC_low_tide_model_dredge)
+PAC.avg_low_tide = model.avg(PAC_low_tide_model_dredge, delta < 4)
+summary(PAC.avg_low_tide)
 ```
 
-OK 
+Note that there are many models with a similar Akaike weight. Note that the low tide (high SGD) values of Ammonia, Nitrate/Nitrite, NNP ratio, Phosphate, and salinity are all in most of the best models, and so they all have support from the data. Use the best model to report coefficients / effect size plots / etc. 
 
 
 
-
-```{r KE Dredge PRU}
-PRU_model_data <- na.omit(all_data_wide %>% 
-        filter(Species == "Porites rus" & Cage_Uncaged == "C"))
-PRU_big_model <- 
-  glm(Percent_Change ~ CVSeasonal_Phosphate_umolL + 
-        shore_dist_m + MeanSeasonal_Silicate_umolL + Maximum_pH, 
-      data = PAC_model_data, na.action = na.pass)
-
-PRU_big_model_dredge <- dredge(PRU_big_model)
-model.sel(PRU_big_model_dredge)
-```
-
-```{r}
-PRU.avg = model.avg(PRU_big_model_dredge, delta < 4)
-summary(PRU.avg)
-```
-
-
-```{r}
+```{r STOP HERE}
 bw_caged_PAC <-lmer(Percent_Change ~ shore_dist_m + (1 | Genotype), data = all_data %>%                     filter(Species == "Pocillopora acuta" 
                            & Cage_Uncaged == "C"))
 anova(bw_caged_PAC)

@@ -208,3 +208,14 @@ Summarized_chem_data_wet$Time <- "Wet"
 
 #write_csv(Summarized_chem_data, here("data","All_Nutrients_Processed.csv"))
 #write_csv(Summarized_chem_data_wet, here("data","Wet_Nutrients_Processed.csv"))
+
+nutrients2 <- left_join(mean_low_data, cv_chem_data, by = join_by(Location, CowTagID)) %>% 
+  dplyr::select(-starts_with("Mean_"))
+nutrients2$Time <- "All"
+
+nutrients2_wet <- left_join(mean_low_data_wet, cv_chem_data_wet, by = join_by(Location, CowTagID)) %>% 
+  dplyr::select(-starts_with("Mean_"))
+nutrients2_wet$Time <- "Wet"
+
+#write_csv(Summarized_chem_data, here("data","All_Nutrients_Processed_CV_Low.csv"))
+#write_csv(Summarized_chem_data_wet, here("data","Wet_Nutrients_Processed_CV_Low.csv"))
