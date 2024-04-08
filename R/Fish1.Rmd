@@ -1,0 +1,225 @@
+---
+title: "Fish_Stuff"
+author: "Callie Stephenson"
+date: "2024-03-28"
+output: html_document
+---
+```{r packages, message=FALSE}
+library(dplyr)
+library(readr)
+library(here)
+library(fishualize)
+library(ggplot2)
+library(vegan)
+```
+
+```{r data}
+maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/MaxN.csv")
+```
+
+Linda rec: make a plot that is ordered by the most abundant fish at site 17, then see if others do the same
+
+```{r, fig.width=15,fig.height=20}
+maxn1 <- maxn %>%
+  mutate(Species = factor(Species, levels = reorder_within(Species, MaxN, Pin == 17)))
+
+plot1 <- ggplot(maxn, aes(x=Species, fill=MaxN))+
+  geom_bar()+
+  facet_wrap(~Pin) +
+  coord_flip()
+
+ggsave("fish_explore.png", plot1, width = 15, height = 30)
+```
+
+NMDS:
+
+```{r}
+maxn_sum <- maxn %>%
+  group_by(Pin, On.Adjacent, Block, Species) %>%
+  summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
+  ungroup()
+
+#make it wide
+wide_maxn_df <- pivot_wider(maxn_sum, 
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN)
+
+#make the NAs as 0's
+wide_maxn_df <- wide_maxn_df %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))
+```
+
+```{r}
+##make a dataframe with ONLY your fish data
+##within the parentheses you write which columns this would be
+Fish2 <-wide_maxn_df[c(4:99)]
+
+##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
+Sites<-wide_maxn_df[c(1)]
+#str(Sites)
+```
+
+```{r}
+##hellinger transformation is a common transformation with community data when you have a lot of zeros
+Fish_com <- decostand(Fish2, method = "hellinger" )
+
+##constructing the dissimilarity matrix, using bray -curtis "how differently are they different"
+mat.dis_fish <- vegdist(Fish_com,method="bray")
+```
+
+```{r}
+set.seed(123)
+
+nmds = metaMDS(mat.dis_fish,k=2, trymax=100, distance = "bray")
+##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear..
+stressplot(nmds) 
+nmds
+
+##Stress Value = how well doe your NMDS represent reality (<0.2)
+plot(nmds, type = "text")
+plot(nmds)
+```
+```{r}
+data.scores = as.data.frame(scores(nmds))
+#including the factors 
+
+data.scores$Site = Sites$Pin
+#data.scores$Site <- factor(data.scores$Site, levels = c(1:223))
+
+head(data.scores)
+```
+
+```{r}
+data.spp.fit <- envfit(nmds, Fish2, permutations = 999)
+
+head(data.spp.fit)
+
+spp.scrs <- as.data.frame(scores(data.spp.fit, display = "vectors")) #save species intrinsic values into dataframe
+spp.scrs <- cbind(spp.scrs, Species = rownames(spp.scrs)) #add species names to dataframe
+
+head(spp.scrs)
+
+sig.spp.scrs <- spp.scrs
+#sig.spp.scrs <- subset(spp.scrs, pval<=0.05) #subset data to show species significant at 0.05
+
+#head(sig.spp.scrs)
+```
+
+```{r}
+##set theme!
+mytheme3<-theme(axis.title = element_text(size = 12, colour = "black"), 
+                panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "black"), 
+                axis.ticks = element_blank(), axis.text = element_text(size = 12), legend.key = element_blank(), 
+                legend.title = element_text(size = 12, colour = "black"), 
+                legend.text = element_text(size = 12, colour = "black"))
+```
+
+```{r}
+library(viridis)
+gg2 <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2))+ 
+  scale_color_viridis(discrete = TRUE, option = "D")+
+  scale_fill_viridis(discrete = TRUE)+
+  labs(colour = "Site")+
+ ggtitle("NMDS")+  mytheme3
+
+data.scores$Site <- as.factor(data.scores$Site)
+
+g2<-gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.8)+
+  #geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+             #  data = spp.scrs)+
+  ggrepel::geom_text_repel(data = spp.scrs, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.25) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
+
+g2 <- g2 + scale_shape_manual(values = 1:20)  # Assuming there are 20 unique sites
+
+g2
+```
+
+```{r FOR MACKENZIE!!!}
+g3 <- gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.8)+ scale_shape_manual(values = 1:20)
+g3
+
+#ggsave("NMDS_for_MT.png", g3)
+```
+
+```{r}
+gg1 =ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2))+ 
+  scale_color_viridis(discrete = TRUE, option = "D")+
+  scale_fill_viridis(discrete = TRUE)+
+  labs(colour = "Reef.zone")+
+  stat_ellipse(aes(fill = Site), geom = "polygon", alpha = .4,
+               type="t",level = 0.95,linetype = 3)+ ggtitle("My NMDS")+  mytheme3
+
+
+g1<- gg1+
+  geom_point(data = data.scores, aes(shape = Site),size = 3, alpha = 0.8)+
+  geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+               data = spp.scrs, size =0.5, alpha = 0.8, colour = "grey30")+
+  scale_shape_manual(values = 1:20)+
+  ggrepel::geom_text_repel(data = spp.scrs, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.25) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
+
+g1
+```
+
+```{r add species names in the data}
+spp.scrs3 <- as.data.frame(scores(data.spp.fit, display = "vectors")) #save species intrinsic values into dataframe
+spp.scrs3 <- cbind(spp.scrs3, Species = rownames(spp.scrs3)) #add species names to dataframe
+spp.scrs3 <- cbind(spp.scrs3, pval = data.spp.fit$vectors$pvals) #add pvalues to dataframe so you can select species which are significant
+
+#spp.scrs<- cbind(spp.scrs, abrev = abbreviate(spp.scrs$Species, minlength = 6)) #abbreviate species names
+sig.spp.scrs3 <- subset(spp.scrs3, pval<=0.05) #subset data to show species significant at 0.05
+
+sig.spp.scrs3
+```
+```{r set theme}
+##set theme!
+mytheme3<-theme(axis.title = element_text(size = 12, colour = "black"), 
+                panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "black"), 
+                axis.ticks = element_blank(), axis.text = element_text(size = 12), legend.key = element_blank(), 
+                legend.title = element_text(size = 12, colour = "black"), 
+                legend.text = element_text(size = 12, colour = "black"))
+```
+
+```{r add species names in the data to the plot}
+options(ggrepel.max.overlaps = Inf)
+
+gg2 = ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2))+
+  scale_color_viridis(discrete = TRUE, option = "D")+
+  scale_fill_viridis(discrete = TRUE)+
+  labs(colour = "Location")+
+  stat_ellipse(aes(fill = Site), geom = "polygon", alpha = .15,
+               type="t",level = 0.95,linetype = 3)+
+  scale_shape_manual(values = 1:20)+
+  mytheme3
+
+g2<-gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.7)+
+  geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2),
+               data = sig.spp.scrs3, size =0.5, alpha = 0.5, colour = "grey30")+
+  ggrepel::geom_text_repel(data = sig.spp.scrs3, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.5, max.overlaps = 15) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
+g2
+
+#ggsave("NMDS_sig_spp.png", g2, width=15, height=10)
+```
+
+```{r, fig.width=20, fig.height=20}
+options(ggrepel.max.overlaps = Inf)
+
+gg2 = ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2))+
+  scale_color_viridis(discrete = TRUE, option = "D")+
+  scale_fill_viridis(discrete = TRUE)+
+  labs(colour = "Location")+
+  stat_ellipse(aes(fill = Site), geom = "polygon", alpha = .15,
+               type="t",level = 0.95,linetype = 3)+
+  scale_shape_manual(values = 1:20)+
+  mytheme3
+
+g2<-gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.7)+
+  geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2),
+               data = sig.spp.scrs3, size =0.5, alpha = 0.5, colour = "grey30")+
+  geom_text(data = sig.spp.scrs3, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.5, max.overlaps = 15) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
+g2
+
+ggsave("NMDS_with_sig_spp.png", g2, width = 20, height = 20)
+```
+
+

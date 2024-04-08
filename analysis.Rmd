@@ -171,7 +171,7 @@ for (sp in species) {
 }
 ```
 Now, doing this again but for both seasons combined:
-```{r wet season raw growth data plots, fig.width=15, fig.height=15}
+```{r both season raw growth data plots, fig.width=15, fig.height=15}
 species <- unique(all_data$Species)
 for (sp in species) {
   # Filter data for the current species and only caged
@@ -181,6 +181,55 @@ for (sp in species) {
   # Create plot for the current species
   plot <- species_data %>%
     ggplot(aes(x = value, y = Percent_Change)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+  #ggsave(filename = paste("output/raw_growth_data_response_plot_", sp, ".png", sep = ""),
+  #       plot = plot, 
+  #       width = 15, height = 15)
+}
+```
+
+Same but let's do for FCM data
+
+```{r wet season raw symbiont count plots, echo=FALSE, fig.width=15, fig.height=15}
+species <- unique(all_data_seasonal$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data_seasonal %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = FSC.Events_per_cm_2)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+  ggsave(filename = paste("output/wet_raw_symbiong_count_response_plot_", sp, ".png", sep = ""),
+         plot = plot, 
+         width = 15, height = 15)
+}
+```
+
+And again, now for both seasons:
+```{r both seasons raw symbiont count plots, echo=FALSE, fig.width=15, fig.height=15}
+species <- unique(all_data$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = FSC.Events_per_cm_2)) +
     geom_point() +
     geom_smooth(method = "lm") +
     facet_wrap(~ Parameter, scales = "free") +
@@ -306,14 +355,41 @@ summary(anova_PAC)
 ```
 
 ### Models
+#### Need to add a caged effect
+#### Random effect of genotype
+
+```{r}
+minimum_columns <- names(all_data_wide)[grepl("Minimum_", names(all_data_wide)) & 
+                                     grepl("Salinity|Temperature|pH", names(all_data_wide))]
+maximum_columns <- names(all_data_wide)[grepl("Maximum_", names(all_data_wide)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
+mean_columns <- names(all_data_wide)[grepl("Mean_", names(all_data_wide)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
+CV_columns <- names(all_data_wide)[grepl("CV_", names(all_data_wide), names(all_data_wide))]
+
+dredge.data <- na.omit(all_data_wide[, c(maximum_columns, 
+                                    minimum_columns,
+                                    mean_columns, #removed bc not enough data for the amount of variables
+                                    CV_columns)])
+```
+
 
 ```{r PAC dredge}
 PAC_model_data <- na.omit(all_data_wide %>% 
         filter(Species == "Pocillopora acuta"))
-PAC_big_model <- 
-  glm(Percent_Change ~ CV_Phosphate_umolL + 
-        shore_dist_m + Mean_Silicate_umolL + Minimum_pH, 
-      data = PAC_model_data, na.action = na.pass)
+#PAC_big_model <- 
+#  glm(Percent_Change ~ CV_Phosphate_umolL + 
+#        shore_dist_m + Mean_Silicate_umolL + Minimum_pH, 
+#      data = PAC_model_data, na.action = na.pass)
+
+# Extract column names for filtering
+selected_columns <- c("Percent_Change", mean_columns, CV_columns)
+
+# Filter the data and select the relevant columns
+PAC_model_data <- PAC_model_data[, selected_columns]
+
+# Build the GLM model
+PAC_big_model <- glm(Percent_Change ~ ., data = PAC_model_data, na.action = na.pass)
 
 PAC_big_model_dredge <- dredge(PAC_big_model)
 model.sel(PAC_big_model_dredge)
@@ -325,6 +401,9 @@ summary(PAC.avg)
 ```
 
 OK 
+
+
+
 
 ```{r KE Dredge PRU}
 PRU_model_data <- na.omit(all_data_wide %>% 

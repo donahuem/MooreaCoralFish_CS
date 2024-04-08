@@ -136,3 +136,27 @@ explanatory2 <- pivot_longer(
 names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
 #write.csv(explanatory2,"Explanatory_variables.csv")
 ```
+
+```{r PCA for CV columns}
+pca.data <- na.omit(nut_no_seep[, c(#maximum_columns, 
+                                    #minimum_columns,
+#                                    mean_columns, #removed bc not enough data for the amount of variables
+                                    CV_columns)])
+pca = princomp(pca.data, cor=TRUE)
+summary(pca)
+loadings(pca)
+```
+```{r}
+biplot(pca)
+```
+```{r}
+nut_no_seep$cvpc1 = pca$scores[,1] #what's this data's score on pc1 axis
+nut_no_seep$cvpc2 = pca$scores[,2] #what's this data's score on pc2 axis
+
+ggplot(nut_no_seep, aes(x = lon, y = lat, color = cvpc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
