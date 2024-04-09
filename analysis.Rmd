@@ -34,14 +34,16 @@ library(ggeffects)
 library(arm) #discrete hist
 library(MuMIn) #dredge
 library(effects) #effects plots for dredged models
+library(curl) #curl
 ```
 
-```{r load data, echo=FALSE}
+```{r load data, echo=FALSE, message=FALSE}
 #explanatory data
 all_nut <- read.csv("data/All_Nutrients_Processed.csv")
 nut <- read.csv("data/March_nutrients_processed.csv")
 nut_wide <- read.csv("data/Nutrient_data_wide.csv")
 explanatory_seasonal <- read.csv("data/Explanatory_variables.csv")
+turb <- read_csv(curl("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv"))
 
 #explanatory 2
 cv_low_wet <- read.csv("data/Wet_Nutrients_Processed_CV_Low.csv")
@@ -60,6 +62,22 @@ PAC_meta <- read.csv("data/PAC_Coral_Codes.csv")
 PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
 ```
 
+```{r clean turb}
+turb1 <- turb %>% 
+  filter(startsWith(CowTagID, "V")& CowTagID != "VSEEP")
+
+turb1 <- turb1 %>%
+  dplyr::select(c(CowTagID,
+                   N_percent,
+                   C_N))
+#use C:N 
+#can also use N percent
+#plot(turb$C_N, turb$N_percent)
+#hist(turb$C_N)
+#hist(turb$N_percent)
+#N_percent looks better. Will use N_percent for models
+```
+
 ```{r explanatory}
 all_nut_long <- pivot_longer(
   data = all_nut,
@@ -71,6 +89,7 @@ join <- unique(join)
 
 explanatory_all <- left_join(join,all_nut_long, by = join_by(CowTagID))
 explanatory_all_wide <- left_join(join, all_nut,by = join_by(CowTagID))
+explanatory_all_wide <- left_join(explanatory_all_wide, turb1,by = join_by(CowTagID))
 ```
 
 ```{r response variables, echo=FALSE}
@@ -378,152 +397,100 @@ mean_low_columns <- names(all_data_wide)[grepl("Low_Tide_Mean_", names(all_data_
 #                                    minimum_columns,
 #                                    mean_columns, #removed bc not enough data for the amount of variables
 #                                    CV_columns)])
-```
 
-
-```{r PAC Growth dredge for CV, warning=FALSE, message=FALSE}
 PAC_model_data <- na.omit(all_data_wide %>% 
         filter(Species == "Pocillopora acuta"))
 
 # Extract column names for filtering
-selected_columns <- c("Percent_Change", "Genotype", "Cage_Uncaged", CV_columns)
+selected_columns <- c("FSC.Events_per_cm_2", "Percent_Change", "Genotype", "Cage_Uncaged", 
+                      CV_columns, mean_low_columns)
 
 # Filter the data and select the relevant columns
-PAC_cv_model_data <- PAC_model_data[, selected_columns]
+PAC_model_data <- PAC_model_data[, selected_columns]
+
+PAC_model_data$CV_Salinity_scaled <- scale(PAC_model_data$CV_Salinity, TRUE, TRUE)
+PAC_model_data$CV_Temperature_scaled  <-  scale(PAC_model_data$CV_Temperature, TRUE, TRUE)
+PAC_model_data$CV_TA_scaled  <-  scale(PAC_model_data$CV_TA, TRUE, TRUE)
+PAC_model_data$CV_pH_scaled  <-  scale(PAC_model_data$CV_pH, TRUE, TRUE)
+PAC_model_data$Low_Tide_Mean_Phosphate_umolL_scaled<-
+  scale(PAC_model_data$Low_Tide_Mean_Phosphate_umolL, TRUE, TRUE)
+PAC_model_data$Low_Tide_Mean_NN_umolL_scaled  <-  
+  scale(PAC_model_data$Low_Tide_Mean_NN_umolL, TRUE, TRUE)
+PAC_model_data$Low_Tide_Mean_Ammonia_umolL_scaled  <-
+  scale(PAC_model_data$Low_Tide_Mean_Ammonia_umolL, TRUE, TRUE)
+PAC_model_data$Low_Tide_Mean_NNP_umolL_scaled <- 
+  scale(PAC_model_data$Low_Tide_Mean_Ammonia_umolL, TRUE, TRUE)
+```
+
+
+```{r Growth Dredge CV or Low Tide Pulse, warning=FALSE, message=FALSE}
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+#the above line works if you only include response and explanatory in the dataframe, but dredge can't handle it with random effects
 
 # Build the GLM model
 #PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-PAC_cv_model <- lmer(Percent_Change ~ CV_Salinity + CV_Temperature + CV_TA + CV_pH + CV_Phosphate_umolL + CV_NN_umolL + CV_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_cv_model_data, 
+PAC_cv_low_growth_model <- lmer(Percent_Change ~ 
+                       CV_Salinity_scaled + 
+                       CV_Temperature_scaled + 
+                       CV_TA_scaled + 
+                       CV_pH_scaled +
+                       Low_Tide_Mean_Phosphate_umolL_scaled + 
+                       Low_Tide_Mean_NN_umolL_scaled + 
+                       Low_Tide_Mean_Ammonia_umolL_scaled +
+                       Low_Tide_Mean_NNP_umolL_scaled +
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
                                  na.action = na.pass)
 
-PAC_cv_model_dredge <- dredge(PAC_cv_model)
-#model.sel(PAC_cv_model_dredge)
-PAC.avg_cv_model = model.avg(PAC_cv_model_dredge, delta < 4)
-summary(PAC.avg_cv_model)
+PAC_cv_low_growth_model_dredge <- dredge(PAC_cv_low_growth_model, trace = 2)
+model.sel(PAC_cv_low_growth_model_dredge)
+PAC.avg_cv_low_growth_model = model.avg(PAC_cv_low_growth_model_dredge, delta < 5)
+summary(PAC.avg_cv_low_growth_model)
 ```
 
-OK so that's for a coefficient of variance hypothesis. It shows that the CV for pH, TA, and Temperature matter, but not the nutrients! Our best model includes pH, Salinity, TA, and Temperature. Here's those effects plots:
-```{r effect plots}
-CV_model_effects_plots <- lmer(Percent_Change ~ CV_Salinity + 
-                                 CV_Temperature + 
-                                 CV_TA + 
-                                 CV_pH + 
-                                 (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_cv_model_data, 
+Make the effects plots for the model with the most support:
+```{r Growth CV + Low tide best model effects plots}
+PAC_growth_cv_plus_lowtide_model <- lmer(Percent_Change ~ 
+#                       CV_Salinity_scaled + 
+#                       CV_Temperature_scaled + 
+                       CV_TA_scaled + 
+                       CV_pH_scaled +
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
                                  na.action = na.pass)
-
-plot(allEffects(CV_model_effects_plots))
+plot(allEffects(PAC_growth_cv_plus_lowtide_model))
 ```
 
-What about mean low!
-```{r PAC Growth Dredge Mean Low 1, warning=FALSE, message=FALSE}
-PAC_model_data <- na.omit(all_data_wide %>% 
-        filter(Species == "Pocillopora acuta"))
+Symbiont model dredging
 
-# Extract column names for filtering
-selected_columns <- c("Percent_Change","Genotype", "Cage_Uncaged", mean_low_columns)
-
-# Filter the data and select the relevant columns
-PAC_low_tide_model_data <- PAC_model_data[, selected_columns]
-
-# Build the big model
-#PAC_mean_low_tide_model <- lmer(Percent_Change ~ . + (1 | Genotype) + (1 | Cage_Uncaged), 
-#                                 data = PAC_low_tide_model_data, 
-#                                 na.action = na.pass)
-
-PAC_mean_low_tide_model <- lmer(Percent_Change ~ Low_Tide_Mean_Salinity + Low_Tide_Mean_Temperature + Low_Tide_Mean_TA + Low_Tide_Mean_pH + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_low_tide_model_data, 
-                                 na.action = na.pass)
-
-PAC_low_tide_model_dredge <- dredge(PAC_mean_low_tide_model)
-#model.sel(PAC_low_tide_model_dredge)
-PAC.avg_low_tide = model.avg(PAC_low_tide_model_dredge, delta < 5)
-summary(PAC.avg_low_tide)
-```
-Note that there are many models with a similar Akaike weight. Note that the low tide (high SGD) values of Ammonia, Nitrate/Nitrite, NNP ratio, Phosphate, and salinity are all in most of the best models, and so they all have support from the data. Use the best model to report coefficients / effect size plots / etc. 
-
-```{r}
-Low_tide_PAC_growth_model_effects_plots <- lmer(Percent_Change ~ Low_Tide_Mean_Phosphate_umolL + 
-                                 (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_low_tide_model_data, 
-                                 na.action = na.pass)
-
-plot(allEffects(Low_tide_PAC_growth_model_effects_plots))
-```
-
-
-```{r PAC Symbionts CV model, message=FALSE, warning=FALSE}
-PAC_model_data <- na.omit(all_data_wide %>% 
-        filter(Species == "Pocillopora acuta"))
-
-# Extract column names for filtering
-selected_columns <- c("FSC.Events_per_cm_2", "Genotype", "Cage_Uncaged", CV_columns)
-
-# Filter the data and select the relevant columns
-PAC_cv_model_data <- PAC_model_data[, selected_columns]
-
+```{r Symbiont data CV AND low tide data dredge, warning=FALSE, message=FALSE}
 # Build the GLM model
 #PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-PAC_cv_model <- lmer(log(FSC.Events_per_cm_2) ~ CV_Salinity + CV_Temperature + CV_TA + CV_pH + CV_Phosphate_umolL + CV_NN_umolL + CV_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_cv_model_data, 
+PAC_cv_low_symb_model <- lmer(log10(FSC.Events_per_cm_2) ~
+                       Low_Tide_Mean_Phosphate_umolL_scaled + 
+                       Low_Tide_Mean_NN_umolL_scaled + 
+                       Low_Tide_Mean_Ammonia_umolL_scaled +
+                       Low_Tide_Mean_NNP_umolL_scaled +
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
                                  na.action = na.pass)
 
-PAC_cv_model_dredge <- dredge(PAC_cv_model)
-#model.sel(PAC_cv_model_dredge)
-PAC.avg_cv_model = model.avg(PAC_cv_model_dredge, delta < 2)
-#I only have a model that includes everything! You take out one, the model gets significantly worse. I don't fully know how to interpret this right now, espeically since only phosphate is coming out significant here...
-summary(PAC.avg_cv_model)
-```
-
-Megan WHAT is going on!!!! Only the most complicated model has support, but even in that, only Phosphate has significant effects?
-
-```{r CV Symbiont Model Effects}
-CV_PAC_symb_model_effects_plots <- lmer(log(FSC.Events_per_cm_2) ~ CV_Phosphate_umolL + 
-                                 (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_cv_model_data, 
-                                 na.action = na.pass)
-
-plot(allEffects(CV_PAC_symb_model_effects_plots))
+PAC_cv_low_symb_model_dredge <- dredge(PAC_cv_low_symb_model, trace = 2)
+model.sel(PAC_cv_low_symb_model_dredge)
+PAC_cv_low_symb_model_dredge_model.avg = model.avg(PAC_cv_low_symb_model_dredge, delta < 10)
+summary(PAC_cv_low_symb_model_dredge_model.avg)
 ```
 
 
-```{r PAC Symbionts Mean Low model, message=FALSE, warning=FALSE}
-PAC_model_data <- na.omit(all_data_wide %>% 
-        filter(Species == "Pocillopora acuta"))
-
-# Extract column names for filtering
-selected_columns <- c("FSC.Events_per_cm_2","Genotype", "Cage_Uncaged", mean_low_columns)
-
-# Filter the data and select the relevant columns
-PAC_low_tide_model_data <- PAC_model_data[, selected_columns]
-
-# Build the big model
-#PAC_mean_low_tide_model <- lmer(Percent_Change ~ . + (1 | Genotype) + (1 | Cage_Uncaged), 
-#                                 data = PAC_low_tide_model_data, 
-#                                 na.action = na.pass)
-
-PAC_mean_low_tide_model <- lmer(log(FSC.Events_per_cm_2) ~ Low_Tide_Mean_Salinity + Low_Tide_Mean_Temperature + Low_Tide_Mean_TA + Low_Tide_Mean_pH + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_low_tide_model_data, 
+```{r Symbiont cv and low tide best model effects plots}
+PAC_symb_cv_plus_lowtide_model <- lmer(Percent_Change ~ 
+                       CV_Salinity + 
+                       CV_Temperature + 
+                       CV_TA + 
+                       CV_pH +
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
                                  na.action = na.pass)
-
-PAC_low_tide_model_dredge <- dredge(PAC_mean_low_tide_model)
-#model.sel(PAC_low_tide_model_dredge)
-PAC.avg_low_tide = model.avg(PAC_low_tide_model_dredge, delta < 1) #I had to make it all the way to 10 to include more than the most complex model. I don't really know how to interpret that!
-summary(PAC.avg_low_tide)
+plot(allEffects(PAC_cv_plus_lowtide_model))
 ```
-
-Now, for mean low tide data, nothing is significant!!!! But only the most complicated model has support. I don't know how this means I should interpret the findings. 
-
-```{r}
-Low_tide_PAC_symb_model_effects_plots <- lmer(log(FSC.Events_per_cm_2) ~ Low_Tide_Mean_NN_umolL + 
-                                                Low_Tide_Mean_pH + 
-                                                Low_Tide_Mean_Phosphate_umolL +
-                                 (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_low_tide_model_data, 
-                                 na.action = na.pass)
-
-plot(allEffects(Low_tide_PAC_symb_model_effects_plots))
-```
-
 
