@@ -378,9 +378,7 @@ summary(anova_PAC)
 #this I have a bit of a hard time believing 
 ```
 
-### Models
-#### Need to add a caged effect
-#### Random effect of genotype
+### Growth Models
 
 ```{r columns to dredge}
 #minimum_columns <- names(all_data_wide)[grepl("Minimum_", names(all_data_wide)) & 
@@ -461,7 +459,7 @@ PAC_growth_cv_plus_lowtide_model <- lmer(Percent_Change ~
 plot(allEffects(PAC_growth_cv_plus_lowtide_model))
 ```
 
-Symbiont model dredging
+### Symbiont Count Models
 
 ```{r Symbiont data CV AND low tide data dredge, warning=FALSE, message=FALSE}
 # Build the GLM model
@@ -477,7 +475,7 @@ PAC_cv_low_symb_model <- lmer(log10(FSC.Events_per_cm_2) ~
 
 PAC_cv_low_symb_model_dredge <- dredge(PAC_cv_low_symb_model, trace = 2)
 model.sel(PAC_cv_low_symb_model_dredge)
-PAC_cv_low_symb_model_dredge_model.avg = model.avg(PAC_cv_low_symb_model_dredge, delta < 10)
+PAC_cv_low_symb_model_dredge_model.avg = model.avg(PAC_cv_low_symb_model_dredge, delta < 8)
 summary(PAC_cv_low_symb_model_dredge_model.avg)
 ```
 
@@ -491,6 +489,6 @@ PAC_symb_cv_plus_lowtide_model <- lmer(Percent_Change ~
                        (1 | Genotype) + (1 | Cage_Uncaged), 
                                  data = PAC_model_data, 
                                  na.action = na.pass)
-plot(allEffects(PAC_cv_plus_lowtide_model))
+plot(allEffects(PAC_symb_cv_plus_lowtide_model))
 ```
 
