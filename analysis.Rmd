@@ -8,12 +8,6 @@ output: github_document
 
 This is a R Markdown file in which I hope to write out my analyses. I will use this document to process all the R scripts found in the R folder and complete my project. 
 
-### NS reccomendation
-
- * Grab both dataframes and make the same version of nut
- * make graphs that have the min/max (like you've put into the PCA) and then the PC axes and then the bw
- * use BW just caged and do model selection like Kyle says
-
 #### Loading the data
 ```{r load packages, echo=FALSE, message=FALSE}
 library(tidyverse)
@@ -56,10 +50,14 @@ BW <- subset(BW, select=-c(1,4,5)) #remove some erroneous columns
 TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_tidy.csv") %>% 
   rename(Placement_Code = PLACEMENT)
+SI <- read.csv("data/STABLE_ISOTOPE_RAW.csv")
 
 #metadata
 PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") 
 PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
+
+#April 16
+explan <- read.csv("data/Explanatory_variables_wide.csv")
 ```
 
 ```{r clean turb}
@@ -123,6 +121,7 @@ PAC_response_data_caged <- PAC_response_data %>%
   filter(Cage_Uncaged == "C")
 ```
 
+
 ```{r all data seasonal, warning=FALSE}
 #now make an all data that has both explanatory and response variables:
 all_data_seasonal <- left_join(response_data, explanatory_seasonal, by = join_by(CowTagID))
@@ -141,6 +140,11 @@ all_PAC_data <- all_data %>%
   filter(Species == "Pocillopora acuta")
 
 all_data_wide <- left_join(response_data, explanatory_all_wide, by = join_by(CowTagID))
+```
+
+
+```{r CS April 16}
+april16 <- left_join(response_data, explan, by = join_by(CowTagID))
 ```
 
 ## Data Exploration:
@@ -544,7 +548,7 @@ PAC_cv_low_symb_model_dredge_model.avg$sw
 
 
 ```{r Symbiont cv and low tide best model effects plots}
-PAC_symb_cv_plus_lowtide_model <- lmer(Percent_Change ~ 
+PAC_symb_cv_plus_lowtide_model <- lmer(log10(FSC.Events_per_cm_2) ~ 
                        CV_Salinity + 
                        CV_Temperature + 
                        CV_TA + 
@@ -554,4 +558,22 @@ PAC_symb_cv_plus_lowtide_model <- lmer(Percent_Change ~
                                  na.action = na.pass)
 plot(allEffects(PAC_symb_cv_plus_lowtide_model))
 ```
+
+
+APRIL 16:
+```{r}
+PAC_model_data <- na.omit(april16 %>% 
+        filter(Species == "Pocillopora acuta"))
+APRIL16_MODEL <- lmer(Percent_Change ~ 
+                       pulse_pc1+
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+
+summary(APRIL16_MODEL)
+```
+
+
+#### ISOTOPES
+If you could plot their 15N and 13C host and symbiont values on 2 different plots that would be a good place to start. One plot for 15N and one for 13C and then facet by whatever your categories are (location on gradient?). Then we can look at how overlapped their isotopes are
 

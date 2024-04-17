@@ -1,5 +1,5 @@
 
-```{r packages}
+```{r packages, message=FALSE}
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -14,7 +14,7 @@ library(effects)
 library(grid) #for as.grob
 ```
 
-```{r tidy data}
+```{r tidy data, warning=FALSE}
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 #nut <- read.csv("data/March_nutrients_processed.csv")
 nut <- read.csv("data/Wet_Nutrients_Processed.csv")
@@ -49,14 +49,11 @@ mean_columns <- names(nut)[grepl("Mean_", names(nut)) &
                                   !grepl("Salinity|Temperature|pH|Ammonia_umol",names(nut))]
 CV_columns <- names(nut)[grepl("CV_", names(nut), names(nut))]
 
+pulse_columns <- names(nut)[grepl("Low_Tide_Mean_", names(nut)) & 
+                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(nut))]
+
 meta_columns <- names(nut_no_seep)[c(1)]
 
-
-
-pca.data <- na.omit(nut_no_seep[, c(maximum_columns, 
-                                    minimum_columns,
-#                                    mean_columns, #removed bc not enough data for the amount of variables
-                                    CV_columns)])
 #keeping V13 in this ex
 ```
 
@@ -89,19 +86,23 @@ pca.data <- na.omit(nut_no_seep[, c(maximum_columns,
 
 
 ###PCA
-```{r}
+```{r pca with max, min, cv}
+pca.data <- na.omit(nut_no_seep[, c(maximum_columns, 
+                                    minimum_columns,
+#                                    mean_columns, #removed bc not enough data for the amount of variables
+                                    CV_columns)])
 pca = princomp(pca.data, cor=TRUE)
 summary(pca)
 ```
-```{r}
+```{r loadings for 1 pca}
 loadings(pca)
 ```
 
-```{r}
+```{r biplot 1 pca}
 biplot(pca, col = c('grey', 'blue'))
 ```
 
-```{r}
+```{r adding values to nut no seep}
 nut_no_seep$pc1 = pca$scores[,1] #what's this data's score on pc1 axis
 nut_no_seep$pc2 = pca$scores[,2] #what's this data's score on pc2 axis
 ```
@@ -109,7 +110,7 @@ nut_no_seep$pc2 = pca$scores[,2] #what's this data's score on pc2 axis
 
 Megan wants me to 'take the loadings onto pc1'
 make a "cheap map" that plots lat long and colors by pc1
-```{r}
+```{r make map of pca values for axes 1 and 2}
 #editing nutwidenoseep so that i also now have clod card data and shore dist data as columns
 nut_no_seep <- left_join(nut_no_seep, clod) 
 nut_no_seep <- left_join(nut_no_seep, seep_dist[,c("CowTagID", "lat", "lon", "dist_to_seep_m")])
@@ -128,7 +129,7 @@ ggpairs(na.omit(nut_no_seep)[c("pc1", "pc2", "shore_dist_m", "dist_to_seep_m")],
 ```
 
 
-```{r}
+```{r write nut no seep as csv}
 nut_no_seepa <- nut_no_seep[, c(meta_columns,maximum_columns, minimum_columns, mean_columns, CV_columns,"pc1","pc2","X._loss", "lat","lon","dist_to_seep_m","shore_dist_m")]
 explanatory2 <- pivot_longer(
   data = nut_no_seepa,
@@ -146,9 +147,11 @@ pca = princomp(pca.data, cor=TRUE)
 summary(pca)
 loadings(pca)
 ```
-```{r}
+
+```{r biplot cv pca}
 biplot(pca)
 ```
+
 ```{r}
 nut_no_seep$cvpc1 = pca$scores[,1] #what's this data's score on pc1 axis
 nut_no_seep$cvpc2 = pca$scores[,2] #what's this data's score on pc2 axis
@@ -158,5 +161,51 @@ ggplot(nut_no_seep, aes(x = lon, y = lat, color = cvpc1)) +
   labs(x = "Latitude", y = "Longitude", color = "PC1") +
   scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
   theme_minimal()
+```
+
+
+## TRYING A MEAN LOW PCA:
+
+```{r mean low PCA}
+pca.data <- na.omit(nut_no_seep[, c(pulse_columns)])
+pca = princomp(pca.data, cor=TRUE)
+summary(pca)
+```
+
+```{r loadings pulse pca}
+loadings(pca)
+```
+
+```{r biplot pulse pca}
+biplot(pca, col = c('grey', 'blue'))
+```
+
+```{r}
+nut_no_seep$pulse_pc1 = pca$scores[,1] #what's this data's score on pc1 axis
+nut_no_seep$pulse_pc2 = pca$scores[,2] #what's this data's score on pc2 axis
+
+plot1 <- ggplot(nut_no_seep, aes(x = lon, y = lat, color = pulse_pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+
+plot2 <- ggplot(nut_no_seep, aes(x = lon, y = lat, color = pulse_pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC2") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+```{r REWRITING Explanatory_variables}
+nut_no_seepa <- nut_no_seep[, c(meta_columns,maximum_columns, minimum_columns, mean_columns, CV_columns,pulse_columns, "pc1","pc2","X._loss", "lat","lon","dist_to_seep_m","shore_dist_m", "pulse_pc1", "pulse_pc2")]
+explanatory2 <- pivot_longer(
+  data = nut_no_seepa,
+  cols = c(Maximum_TA:pulse_pc2)) 
+names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
+#write.csv(explanatory2,"Explanatory_variables.csv")
+#write.csv(nut_no_seepa,"Explanatory_variables_wide.csv")
 ```
 
