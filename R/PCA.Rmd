@@ -200,12 +200,12 @@ grid.arrange(plot1, plot2, ncol = 2)
 ```
 
 ```{r REWRITING Explanatory_variables}
-nut_no_seepa <- nut_no_seep[, c(meta_columns,maximum_columns, minimum_columns, mean_columns, CV_columns,pulse_columns, "pc1","pc2","X._loss", "lat","lon","dist_to_seep_m","shore_dist_m", "pulse_pc1", "pulse_pc2")]
+pulse_data <- nut_no_seep[, c(meta_columns, "pulse_pc1", "pulse_pc2")]
 explanatory2 <- pivot_longer(
-  data = nut_no_seepa,
+  data = pulse_data,
   cols = c(Maximum_TA:pulse_pc2)) 
 names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
 #write.csv(explanatory2,"Explanatory_variables.csv")
-#write.csv(nut_no_seepa,"Explanatory_variables_wide.csv")
+write.csv(pulse_data,"PCA_Pulse_variables_wide.csv")
 ```
 
