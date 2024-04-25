@@ -29,6 +29,7 @@ library(arm) #discrete hist
 library(MuMIn) #dredge
 library(effects) #effects plots for dredged models
 library(curl) #curl
+library(gridExtra)
 ```
 
 NS Notes:
@@ -569,12 +570,16 @@ names(PRU_model_scaled_data_long)[names(PRU_model_scaled_data_long) == "name"] <
 #lmer(y~poly(x,2) + (1|random effect)
 ```
 
-```{r model all scaled parameteres against growth}
+##### linear growth pac
+
+```{r PAC linear model all scaled parameteres against growth}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
                             p.value = numeric(),
                             Estimate = numeric(),
                             stringsAsFactors = FALSE)
+
+plotlist <- list()
 
 parameters <- unique(PAC_model_scaled_data_long$Parameter)
 
@@ -593,16 +598,103 @@ for (parameter in parameters) {
   p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
   Estimate <- model_summary$coefficients["value", "Estimate"]
   
-  # Add results to the dataframe
-  model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                   AICc = AICc,
-                                                   p.value = p.value,
-                                                   Estimate = Estimate))
-}
+  # Calculate marginal and conditional R-squared values
+    rsq <- as.numeric(r.squaredGLMM(model))
+    marginal_R2 <- rsq[1]
+    conditional_R2 <- rsq[2]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate,
+                                                     Marginal_R2 = marginal_R2,
+                                                     Conditional_R2 = conditional_R2))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+print(model_results)
+grid.arrange(grobs = plotlist, ncol = 2)
 
+model_results$Species <- "Pocillopora acuta"
+model_results$type <- "linear"
+
+all_PAC_growth_model_results <- model_results
+
+```
+
+##### polynomial growth PAC
+
+```{r PAC polynomial model all scaled parameteres against growth}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+plotlist <- list()
+
+parameters <- unique(PAC_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
+  
+  # Fit the mixed-effects model
+  model <- lmer(Percent_Change ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc and p-value
+  AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  
+  # Calculate marginal and conditional R-squared values
+    rsq <- as.numeric(r.squaredGLMM(model))
+    marginal_R2 <- rsq[1]
+    conditional_R2 <- rsq[2]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate,
+                                                     Marginal_R2 = marginal_R2,
+                                                     Conditional_R2 = conditional_R2))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
 
 model_results %>% filter(p.value < 0.05)
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Pocillopora acuta"
+model_results$type <- "polynomial"
+
+all_PAC_growth_model_results <- rbind(model_results, all_PAC_growth_model_results)
 ```
+
+
+#### linear PAC symb
 
 ```{r model all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
 model_results <- data.frame(Parameter = character(),
@@ -610,6 +702,8 @@ model_results <- data.frame(Parameter = character(),
                             p.value = numeric(),
                             Estimate = numeric(),
                             stringsAsFactors = FALSE)
+
+plotlist <- list()
 
 parameters <- unique(PAC_model_scaled_data_long$Parameter)
 
@@ -628,18 +722,34 @@ for (parameter in parameters) {
   p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
   Estimate <- model_summary$coefficients["value", "Estimate"]
   
-  # Add results to the dataframe
-  model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                   AICc = AICc,
-                                                   p.value = p.value,
-                                                   Estimate = Estimate))
-}
-
-
+if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
 model_results %>% filter(p.value < 0.05)
+#grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Pocillopora acuta"
+model_results$type <- "linear"
+all_PAC_symb_model_results <- model_results
 ```
 
-So, nothing is changing the symbionts...
+So, nothing is changing the symbionts in acuta...
+
+##### PRU linear growth
 
 ```{r PRU all variables scaled against growth, message=FALSE}
 model_results <- data.frame(Parameter = character(),
@@ -647,6 +757,7 @@ model_results <- data.frame(Parameter = character(),
                             p.value = numeric(),
                             Estimate = numeric(),
                             stringsAsFactors = FALSE)
+plotlist <- list()
 
 parameters <- unique(PRU_model_scaled_data_long$Parameter)
 
@@ -665,15 +776,30 @@ for (parameter in parameters) {
   p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
   Estimate <- model_summary$coefficients["value", "Estimate"]
   
-  # Add results to the dataframe
-  model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                   AICc = AICc,
-                                                   p.value = p.value,
-                                                   Estimate = Estimate))
-}
-
-
+ if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
 model_results %>% filter(p.value < 0.05)
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Porites rus"
+model_results$type <- "linear"
+
+all_PRU_growth_model_results <- model_results
 ```
 
 
@@ -683,6 +809,7 @@ model_results <- data.frame(Parameter = character(),
                             p.value = numeric(),
                             Estimate = numeric(),
                             stringsAsFactors = FALSE)
+plotlist <- list()
 
 parameters <- unique(PRU_model_scaled_data_long$Parameter)
 
@@ -701,17 +828,196 @@ for (parameter in parameters) {
   p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
   Estimate <- model_summary$coefficients["value", "Estimate"]
   
-  # Add results to the dataframe
-  model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                   AICc = AICc,
-                                                   p.value = p.value,
-                                                   Estimate = Estimate))
-}
+ if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+model_results %>% filter(p.value < 0.05)
+grid.arrange(grobs = plotlist, ncol = 2)
 
+
+model_results$Species <- "Porites rus"
+model_results$type <- "linear"
+
+all_PRU_symb_model_results <- model_results
+```
+#### Polynomial models
+lmer(y~poly(x,2) + (1|random effect)
+
+```{r polynomialmodel all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+plotlist <- list()
+
+parameters <- unique(PAC_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
+
+  # Fit the mixed-effects model
+  model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc and p-value
+  AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
 
 model_results %>% filter(p.value < 0.05)
-summary(model)
+#grid.arrange(grobs = plotlist, ncol = 1)
+
+model_results$Species <- "Pocillopora acuta"
+model_results$type <- "polynomial"
+
+all_PAC_symb_model_results <- rbind(model_results, all_PAC_symb_model_results)
 ```
+
+So, nothing is changing the symbionts in acuta...
+
+```{r PRU polynomial all variables scaled against growth, message=FALSE}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+plotlist <- list()
+
+parameters <- unique(PRU_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
+  
+  # Fit the mixed-effects model
+  model <- lmer(Percent_Change ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc and p-value
+  AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+
+model_results %>% filter(p.value < 0.05)
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Porites rus"
+model_results$type <- "polynomial"
+
+all_PRU_growth_model_results <- model_results
+```
+
+
+
+```{r PRU symbionts polynomial, message=FALSE}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+
+plotlist <- list()
+
+parameters <- unique(PRU_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
+  
+  # Fit the mixed-effects model
+  model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc and p-value
+  AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+
+model_results %>% filter(p.value < 0.05)
+grid.arrange(grobs = plotlist, ncol = 1)
+
+model_results$Species <- "Porites rus"
+model_results$type <- "polynomial"
+
+all_PRU_symb_model_results <- model_results
+```
+
 
 #### Dredged data models (aka is multiresponse better than univariate models)
 
@@ -881,27 +1187,13 @@ plot(allEffects(PAC_symb_cv_plus_lowtide_model))
 ```
 
 
-APRIL 16:
-```{r}
-PAC_model_data <- na.omit(april16 %>% 
-        filter(Species == "Pocillopora acuta"))
-APRIL16_MODEL <- lmer(Percent_Change ~ 
-                       pulse_pc1+
-                       (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_model_data, 
-                                 na.action = na.pass)
-
-summary(APRIL16_MODEL)
-```
-
-
 #### ISOTOPES
 If you could plot their 15N and 13C host and symbiont values on 2 different plots that would be a good place to start. One plot for 15N and one for 13C and then facet by whatever your categories are (location on gradient?). Then we can look at how overlapped their isotopes are
 
 "δ15N...........vs..AIR."
 "δ13C............vs..VPDB."
 
-```{r EXPLORATORY 15N host fig.width=15, fig.height=15}
+```{r 15N host, fig.width=15, fig.height=15}
 # species <- unique(SI_data$Species) # has NA
 species <- c("Pocillopora acuta", "Porites rus" )
 for (sp in species) {
