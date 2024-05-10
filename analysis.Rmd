@@ -689,16 +689,16 @@ PAC_growth_model_results <- rbind(model_results, PAC_growth_model_results)
 
 #### PAC growth results
 ```{r}
-PAC_growth_model_results
+PAC_growth_model_results[order(PAC_growth_model_results$AICc), c(1, 8, 2:7)]
 ```
 
 ```{r PAC growth multivariate dredge}
 PAC_growth_big_model <- lmer(Percent_Change ~ 
-                       Maximum_TA_scaled + 
-                       Low_Tide_Mean_Phosphate_umolL_scaled +
+                       CV_pH_scaled +
+                        Minimum_pH_scaled +
+                         CV_TA_scaled +
                          CV_NN_umolL_scaled +
-                         CV_TA_scaled+
-                         	Minimum_pH_scaled +
+                         Maximum_TA_scaled +
                        (1 | Genotype)+ (1|Cage_Uncaged), 
                                  data = PAC_model_data, 
                                  na.action = na.pass)
@@ -709,6 +709,15 @@ PAC_growth.avg = model.avg(PAC_growth_big_model_dredge, delta < 4)
 summary(PAC_growth.avg)
 PAC_growth.avg$sw
 ```
+
+
+## PAC GROWTH FINAL:
+```{r}
+FINAL_PAC_growth <- subset(PAC_growth_model_results, abs(AICc - min(AICc)) < 2)
+
+FINAL_PAC_growth
+```
+
 
 #### Pru growth linear
 
@@ -819,13 +828,14 @@ PRU_growth_model_results <- rbind(model_results,PRU_growth_model_results)
 
 #### PRU growth results
 ```{r}
-PRU_growth_model_results
+PRU_growth_model_results[order(PRU_growth_model_results$AICc), c(1, 6, 2:5)]
 ```
 
 ```{r multivariate dredge}
 PRU_growth_big_model <- lmer(Percent_Change ~ 
-                       Low_Tide_Mean_Ammonia_umolL_scaled + 
-                       CV_Ammonia_umolL_scaled +
+                       Low_Tide_Mean_Salinity_scaled + 
+                       Low_Tide_Mean_Temperature_scaled +
+                        CV_Salinity_scaled +
                        (1 | Genotype)+ (1|Cage_Uncaged), 
                                  data = PRU_model_data, 
                                  na.action = na.pass)
