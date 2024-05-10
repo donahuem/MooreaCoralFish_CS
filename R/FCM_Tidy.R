@@ -22,19 +22,23 @@ meta <- meta %>%
   mutate(Tube.Name.=sprintf("%02d-Well-%s%d", PLATE, ROW, COLUMN))
 
 merged_FCM <- meta %>%
-  left_join(FCM, by = "Tube.Name.") %>%
+  left_join(FCM, by = "Tube.Name.")
+
+merged_FCM[merged_FCM$PLACEMENT == "PRU V03 C" & merged_FCM$PLATE == 3, "GOOD.SAMPLE"] <- FALSE #May 9, 2024 CS found an error in this code where I had a sample I had re-run that was still listed as a 'good sample'
+
+merged_FCM <- merged_FCM %>%
   filter(GOOD.SAMPLE)
 
 FCM_data <- merged_FCM[,c(1,2,6,7,13,17,21)]
 
 
 PAC <- read.csv("data/PAC_Coral_Codes.csv")%>% 
-  select(!X) %>% 
-  select(!X.1) %>% 
+  dplyr::select(!X) %>% 
+  dplyr::select(!X.1) %>% 
   rename("PLACEMENT" = "Placement_Code")
 PRU <- read.csv("data/PRU_Coral_Codes.csv")%>% 
   rename("PLACEMENT" = "Placement_Code") %>% 
-  select(!X)
+  dplyr::select(!X)
 
 codes <- rbind(PAC[,c(2,3,4,7,8)],PRU[,c(2,3,4,7,8)])
 
@@ -67,8 +71,6 @@ FCM$FSC.Events_per_cm_2 <- FCM$FSC.Events.per.slurry / FCM$Surface_Area
 FCM$FSC.Events_per_g_dry_weight <- FCM$FSC.Events.per.slurry / FCM$Approximate.Dry.Weight.of.Whole.Sample
 
 write_csv(FCM, here("Data","FCM_Tidy.csv"))
-
-
 
 #FCM_Join <- FCM[, c("Placement_Code", "sym_FSC.Events")]
 #FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
