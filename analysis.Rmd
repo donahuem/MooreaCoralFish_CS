@@ -98,7 +98,7 @@ explanatory_all_wide <- left_join(explanatory_all_wide, PCA_Pulse_variables_wide
 #make a master response variable data sheet
 response_data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5,6)], by = join_by(Placement_Code)) %>% 
   #select(!X) %>% #check that this doesn't need to be here
-  left_join(FCM[,c(1,15,17)], by = join_by(Placement_Code)) %>% 
+  left_join(FCM[,c(1,16,17)], by = join_by(Placement_Code)) %>% 
   left_join(TLE[,c(3:7)], by = join_by(Placement_Code))
 response_data$CowTagID <- paste0("V",response_data$Pin_Number)
 
@@ -202,7 +202,6 @@ selected_columns <- c("FSC.Events_per_cm_2", "Percent_Change", "Genotype", "Cage
                       scaled_max_columns,
                       scaled_cv_columns,
                       scaled_ml_columns)
-
 
 model_data <- all_data_wide[, selected_columns]
 
@@ -403,7 +402,7 @@ car::Anova(model)
 plot1 <- response_data_no_14C_14B %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
   geom_point() +
   geom_smooth(method = "lm", formula = "y~poly(x,2)") +
-  ggtitle("BW by Number of Symbionts 14B")
+  ggtitle("BW by Number of Symbionts no 14C with 14B")
 
 plot2 <- response_data_no_14C %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
   geom_point() +
