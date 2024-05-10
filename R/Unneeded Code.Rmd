@@ -186,4 +186,173 @@ summary(symb_m1_PRU)
 ```
 
 
+### EXTRA
+
+
+#### Dredged data models (aka is multiresponse better than univariate models)
+
+```{r collinearity in cv dredge parameters}
+ggpairs(PAC_model_data, columns = c("CV_Salinity_scaled",  
+                       "CV_Temperature_scaled",  
+                       "CV_TA_scaled",  
+                       "CV_pH_scaled"), progress = FALSE)
+```
+
+```{r collinearity in pulse dredge parameters}
+ggpairs(PAC_model_data, columns = c("Low_Tide_Mean_Phosphate_umolL",  
+                       "Low_Tide_Mean_NN_umolL", 
+                       "Low_Tide_Mean_Ammonia_umolL",
+                       "Low_Tide_Mean_NNP_umolL"), progress = FALSE)
+```
+
+Extra exploratory plots:
+```{r exploratory plots with bw change}
+PAC_model_data_long <- pivot_longer(
+  data = PAC_model_data,
+  cols = c("Low_Tide_Mean_Phosphate_umolL",  
+                       "Low_Tide_Mean_NN_umolL", 
+                       "Low_Tide_Mean_Ammonia_umolL",
+                       "Low_Tide_Mean_NNP_umolL",
+           "CV_Salinity_scaled",  
+                       "CV_Temperature_scaled",  
+                       "CV_TA_scaled",  
+                       "CV_pH_scaled"),
+  names_to = "Parameter",
+  values_to = "Value")
+
+ggplot(PAC_model_data_long, aes(x = Value, y = Percent_Change)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free") +
+    theme_bw()
+```
+
+
+```{r exploratory plots with symb}
+ggplot(PAC_model_data_long, aes(x = Value, y = FSC.Events_per_cm_2)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free") +
+    theme_bw()
+```
+
+
+```{r Growth Dredge CV or Low Tide Pulse, warning=FALSE, message=FALSE}
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+#the above line works if you only include response and explanatory in the dataframe, but dredge can't handle it with random effects
+
+# Build the GLM model
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+PAC_cv_low_growth_model <- lmer(Percent_Change ~ 
+                       CV_Salinity_scaled + 
+                       CV_Temperature_scaled + 
+                       CV_TA_scaled + 
+                       CV_pH_scaled +
+                       Low_Tide_Mean_Phosphate_umolL_scaled + 
+                       Low_Tide_Mean_NN_umolL_scaled + 
+                       Low_Tide_Mean_Ammonia_umolL_scaled +
+                       Low_Tide_Mean_NNP_umolL_scaled +
+                       (1 | Genotype), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+
+PAC_cv_low_growth_model_dredge <- dredge(PAC_cv_low_growth_model, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PAC.avg_cv_low_growth_model = model.avg(PAC_cv_low_growth_model_dredge, delta < 5)
+summary(PAC.avg_cv_low_growth_model)
+PAC.avg_cv_low_growth_model$sw
+```
+
+Make the effects plots for the model with the most support:
+```{r Growth CV + Low tide best model effects plots}
+PAC_growth_cv_plus_lowtide_model <- lmer(Percent_Change ~ 
+#                       CV_Salinity_scaled + 
+#                       CV_Temperature_scaled + 
+                       CV_TA_scaled + 
+#                       CV_pH_scaled +
+                       (1 | Genotype), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+plot(allEffects(PAC_growth_cv_plus_lowtide_model))
+```
+
+# April 17 Minimum Maximum models aka extremes drive change
+```{r  PAC Growth Dredge Min and Max, warning=FALSE, message=FALSE}
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+#the above line works if you only include response and explanatory in the dataframe, but dredge can't handle it with random effects
+
+# Build the GLM model
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+PAC_cv_minmax_growth_model <- lmer(Percent_Change ~ 
+                       Minimum_Salinity_scaled + 
+                       Minimum_Temperature_scaled + 
+                       Maximum_TA_scaled + 
+                       Minimum_pH_scaled +
+                       Maximum_NN_umolL_scaled + 
+                       Maximum_Phosphate_umolL_scaled + 
+                       Maximum_NNP_umolL_scaled +
+                       (1 | Genotype), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+
+PAC_cv_minmax_growth_model_dredge <- dredge(PAC_cv_minmax_growth_model, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PAC.avg_minmax_growth_model = model.avg(PAC_cv_minmax_growth_model_dredge, delta < 10)
+summary(PAC.avg_minmax_growth_model)
+PAC.avg_minmax_growth_model$sw
+```
+
+```{r PRU Growth Dredge Min and Max, warning=FALSE, message=FALSE}
+PRU_cv_minmax_growth_model <- lmer(Percent_Change ~ 
+                       Minimum_Salinity_scaled + 
+                       Minimum_Temperature_scaled + 
+                       Maximum_TA_scaled + 
+                       Minimum_pH_scaled +
+                       Maximum_NN_umolL_scaled + 
+                       Maximum_Phosphate_umolL_scaled + 
+                       Maximum_NNP_umolL_scaled +
+                       (1 | Genotype), 
+                                 data = PRU_model_data, 
+                                 na.action = na.pass)
+
+PRU_cv_minmax_growth_model_dredge <- dredge(PRU_cv_minmax_growth_model, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PRU.avg_minmax_growth_model = model.avg(PRU_cv_minmax_growth_model_dredge, delta < 10)
+summary(PRU.avg_minmax_growth_model)
+PRU.avg_minmax_growth_model$sw
+```
+
+### Symbiont Count Models
+
+```{r Symbiont data CV AND low tide data dredge, warning=FALSE, message=FALSE}
+# Build the GLM model
+#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
+PAC_cv_low_symb_model <- lmer(log10(FSC.Events_per_cm_2) ~
+                       Low_Tide_Mean_Phosphate_umolL_scaled + 
+                       Low_Tide_Mean_NN_umolL_scaled + 
+                       Low_Tide_Mean_Ammonia_umolL_scaled +
+                       Low_Tide_Mean_NNP_umolL_scaled +
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+
+PAC_cv_low_symb_model_dredge <- dredge(PAC_cv_low_symb_model, trace = 2)
+model.sel(PAC_cv_low_symb_model_dredge)
+PAC_cv_low_symb_model_dredge_model.avg = model.avg(PAC_cv_low_symb_model_dredge, delta < 8)
+summary(PAC_cv_low_symb_model_dredge_model.avg)
+PAC_cv_low_symb_model_dredge_model.avg$sw
+```
+
+
+```{r Symbiont cv and low tide best model effects plots}
+PAC_symb_cv_plus_lowtide_model <- lmer(log10(FSC.Events_per_cm_2) ~ 
+                       CV_Salinity + 
+                       CV_Temperature + 
+                       CV_TA + 
+                       CV_pH +
+                       (1 | Genotype) + (1 | Cage_Uncaged), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+plot(allEffects(PAC_symb_cv_plus_lowtide_model))
+```
 

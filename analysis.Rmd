@@ -32,9 +32,6 @@ library(curl) #curl
 library(gridExtra)
 ```
 
-NS Notes:
-Wants to do grams per grams (change in bw / initaial bw / number of days)
-aka not multiplying by 100 to get percent change, but dividing by time to get change in bw by day
 
 ```{r load data, echo=FALSE, message=FALSE}
 #explanatory data
@@ -42,7 +39,7 @@ all_nut <- read.csv("data/All_Nutrients_Processed.csv")
 nut <- read.csv("data/March_nutrients_processed.csv")
 nut_wide <- read.csv("data/Nutrient_data_wide.csv")
 explanatory_seasonal <- read.csv("data/Explanatory_variables.csv")
-turb <- read_csv(curl("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv"))
+turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv")
 
 #explanatory 2
 cv_low_wet <- read.csv("data/Wet_Nutrients_Processed_CV_Low.csv")
@@ -55,11 +52,10 @@ BW <- subset(BW, select=-c(1,4,5)) #remove some erroneous columns
 TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_tidy.csv") %>% 
   rename(Placement_Code = PLACEMENT)
-SI <- read.csv("data/STABLE_ISOTOPE_RAW.csv")
+SI <- read.csv("data/SI_Tidy.csv")
 
 #metadata
-PAC_meta <- read.csv("data/PAC_Coral_Codes.csv") 
-PRU_meta <- read.csv("data/PRU_Coral_Codes.csv") 
+meta <- read.csv("data/coral_metadata.csv")
 
 #Mean Low Tide Value PCA 1 Axis
 PCA_Pulse_variables_wide <- read.csv("data/PCA_Pulse_variables_wide.csv")
@@ -98,58 +94,9 @@ explanatory_all_wide <- left_join(explanatory_all_wide, PCA_Pulse_variables_wide
 ```
 
 
-```{r fix meta}
-#meta takes a little massaging
-PAC_meta <- PAC_meta[,c(3:10)]
-PAC_meta$Species <- "Pocillopora acuta"
-PAC_meta$Genotype <- gsub('PR21', 'PA21', PAC_meta$Genotype) #fix a typo in the genotypes
-PRU_meta <- PRU_meta[,c(2:9)]
-PRU_meta$Species <- "Porites rus"
-
-meta <- rbind(PAC_meta, PRU_meta)
-meta$Cage_Uncaged <- ifelse(meta$Cage_Uncaged == "T0", meta$Cage_Uncaged, 
-                            substr(meta$Placement_Code, nchar(meta$Placement_Code),
-                                   nchar(meta$Placement_Code)))
-meta$Cage_Uncaged <- as.factor(meta$Cage_Uncaged)
-```
-
-```{r stable isotope data, warning=FALSE}
-SI <- SI[,c(1:6)] #remove random extra columns
-# Create a new column 'HS' containing the last 4 characters of 'Sample.ID'
-SI$HS <- substr(SI$Sample.ID, nchar(SI$Sample.ID) - 3, nchar(SI$Sample.ID))
-
-# Create a new column 'Sample.ID' containing all characters except the last 4 characters
-SI$Sample.ID <- substr(SI$Sample.ID, 1, nchar(SI$Sample.ID) - 5)
-SI$δ15N <- SI$δ15N...........vs..AIR.
-SI$δ13C <- SI$δ13C............vs..VPDB
-
-# Now your_data contains 'Sample.ID' split into two columns 'Sample.ID' and 'HS'
-SI_cleaner <- SI[SI$Sample.ID != "", ]
-
-SI_cleaner <- SI_cleaner %>%
-  rename(`Micro_Vial` = Sample.ID)
-
-SI_meta <- left_join(SI_cleaner, meta, by = join_by(Micro_Vial))
-SI_meta$Genotype[is.na(SI_meta$Genotype)] <- SI_meta$Micro_Vial[is.na(SI_meta$Genotype)]
-SI_meta$CowTagID <- paste0("V", SI_meta$Pin_Number)
-
-CV <- names(explanatory_all_wide)[grepl("CV_", names(explanatory_all_wide), names(explanatory_all_wide))]
-mean_low <- names(explanatory_all_wide)[grepl("Low_Tide_Mean_", names(explanatory_all_wide), names(explanatory_all_wide))]
-
-filter_values <- c(CV, mean_low)
-
-SI_data <- left_join(SI_meta, explanatory_all,by = join_by(CowTagID))
-SI_data_wide <- left_join(SI_meta, explanatory_all_wide,by = join_by(CowTagID))
-
-# Filter the dataframe SI_data
-SI_data <- SI_data[SI_data$Parameter %in% filter_values, ] 
-```
-
-
-
 ```{r build response, echo=FALSE}
 #make a master response variable data sheet
-response_data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5)], by = join_by(Placement_Code)) %>% 
+response_data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5,6)], by = join_by(Placement_Code)) %>% 
   #select(!X) %>% #check that this doesn't need to be here
   left_join(FCM[,c(1,15,17)], by = join_by(Placement_Code)) %>% 
   left_join(TLE[,c(3:7)], by = join_by(Placement_Code))
@@ -280,6 +227,7 @@ dredge.data <- na.omit(model_data[, c(maximum_columns,
 #                      scaled_ml_columns
 )])
 ```
+
 ## Data Exploration:
 Data exploration focuses on the following points:
 1. Outliers
@@ -331,6 +279,7 @@ for (sp in species) {
 #         width = 15, height = 15)
 }
 ```
+
 Now, doing this again but for both seasons combined:
 ```{r both season raw growth data plots, fig.width=15, fig.height=15}
 species <- unique(all_data$Species)
@@ -374,9 +323,9 @@ for (sp in species) {
     theme_bw()
   # Print and save the plot
   print(plot)
-  ggsave(filename = paste("output/wet_raw_symbiong_count_response_plot_", sp, ".png", sep = ""),
-         plot = plot, 
-         width = 15, height = 15)
+#  ggsave(filename = paste("output/wet_raw_symbiong_count_response_plot_", sp, ".png", sep = ""),
+#         plot = plot, 
+#         width = 15, height = 15)
 }
 ```
 
@@ -404,15 +353,68 @@ for (sp in species) {
 }
 ```
 
+
+
 ```{r growth change by symbionts}
 response_data %>% 
   filter(Cage_Uncaged == "C") %>% 
   ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
   geom_point() +
+  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
   ggtitle("Change in BW by Number of Symbionts") +
-#  geom_text(aes(label = Pin_Number)) +
-  facet_wrap(~ Species, scales = "free")
+  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~ Species, scales = "free") -> growth_v_symb_plot
+
+growth_v_symb_plot
+#ggsave("output/caged_growth_v_symb.png", width = 9, height = 6, plot = growth_v_symb_plot)
+
+
+symb_growth_model <- response_data %>%
+  filter(Cage_Uncaged == "C") %>%
+  group_by(Species) %>% 
+  do(model = lmer(Percent_Change ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = .))
+
+# Extract model objects and print the anovas
+model_objects <- symb_growth_model$model
+anova_tables <- lapply(model_objects, function(model) {
+  car::Anova(model)
+})
+anova_tables
+#car::Anova(symb_growth_model$model[[1]]) #less code with small number of models
+car::Anova(symb_growth_model$model[[2]])
 ```
+
+OK, I don't want this relationship driven by 14 for rus, which I know had a good B coral and a diseased C coral
+
+```{r}
+response_data_no_14C_14B <- response_data %>%
+  filter(Species == "Porites rus" & 
+         (Cage_Uncaged == "C" | (Cage_Uncaged == "B" & Pin_Number == 14)))%>% 
+  filter(!(Pin_Number == 14 & Cage_Uncaged == "C"))
+
+response_data_no_14C <- response_data %>%
+  filter(Species == "Porites rus" & 
+         (Cage_Uncaged == "C")) %>%
+  filter(!(Pin_Number == 14 & Cage_Uncaged == "C"))
+
+model = lmer(Percent_Change ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = response_data_no_14C_14B)
+car::Anova(model)
+
+plot1 <- response_data_no_14C_14B %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+  ggtitle("BW by Number of Symbionts 14B")
+
+plot2 <- response_data_no_14C %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+  ggtitle("BW by Number of Symbionts no 14C")
+
+grid.arrange(plot1, plot2, ncol = 2)
+
+```
+
+
 
 
 ```{r bw change in rus vs acuta}
@@ -424,16 +426,12 @@ BW_long <- response_data %>%
   pivot_wider(names_from = "Species",
               values_from = "Percent_ChangeM")
 
-ggplot(data = BW_long, aes(x = `Pocillopora acuta`, y = `Porites rus`))+
-  geom_point()
+growth_v_sp_plot <- ggplot(data = BW_long, aes(x = `Pocillopora acuta`, y = `Porites rus`))+
+  geom_point() +
+  labs(title = "% ∆ BW between species by Pin Number")
+#  geom_smooth(method = "lm") +
   
-```
-
-```{r maybe its polynomial}
-ggplot(data = model_data, aes(x = Maximum_Silicate_umolL, y = Percent_Change))+
-  geom_point()+
-  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
-  facet_wrap(~Species)
+#ggsave("output/caged_growth_v_sp_plot.png", width = 9, height = 6, plot = growth_v_sp_plot)
 ```
 
 
@@ -450,10 +448,10 @@ Now making a plot to look at outliers:
 ```{r BW Outlier Plot, echo=FALSE}
 par(mar = c(2.5, 1, 1, 1) + 0.1)
 layout(matrix(1:2, nrow = 2), heights = c(3, 3))
-dotchart(BW$Change_Over_Area, main = "∆BW", 
-         groups = BW$Cage_Uncaged)
-dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", 
-         groups = BW_no$Cage_Uncaged)
+#dotchart(BW$Change_Over_Area, main = "∆BW", 
+#         groups = BW$Cage_Uncaged)
+#dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", 
+#         groups = BW_no$Cage_Uncaged)
 layout(1)
 ```
 I removed PRU V13 A placement because this was broken in the field, creating a large negative change in buoyant weight. 
@@ -462,12 +460,12 @@ TLE
 ```{r TLE Plot, echo=FALSE}
 TLE <- merge(TLE, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
 layout(matrix(c(1, 2, 3, 4), 2, 2, byrow = TRUE)) # Setting up the layout
-dotchart(TLE$Max_L_AVG, main = "Max L", groups = TLE$Cage_Uncaged) # Side Max L Plot
-dotchart(TLE$Max_L_Basal, main = "Max L Basal", groups = TLE$Cage_Uncaged) # Basal Max L plot
-dotchart(TLE$Area_AVG, main = "Area", groups = TLE$Cage_Uncaged) # Area plot
-dotchart(TLE$Area_Basal, main = "Basal Area", groups = TLE$Cage_Uncaged) # Basal Area plot
+#dotchart(na.omit(TLE$Max_L_AVG), main = "Max L", groups = na.omit(TLE$Cage_Uncaged)) # Side Max L Plot
+#dotchart(TLE$Max_L_Basal, main = "Max L Basal", groups = na.omit(TLE$Cage_Uncaged)) # Basal Max L plot
+#dotchart(TLE$Area_AVG, main = "Area", groups = na.omit(TLE$Cage_Uncaged)) # Area plot
+#dotchart(TLE$Area_Basal, main = "Basal Area", groups = na.omit(TLE$Cage_Uncaged)) # Basal Area plot
 layout(1) # Reset the layout
-title("TLE Outlier Dotchart", line = -1, outer = TRUE, cex.main = 1.5)
+#title("TLE Outlier Dotchart", line = -1, outer = TRUE, cex.main = 1.5)
 ```
 
 ### Symbionts
@@ -478,22 +476,28 @@ FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
 FCM_no <- FCM[!(FCM$Placement_Code == "PRU V17 C"), ]
 par(mar = c(2.5, 1, 1, 1) + 0.1)
 layout(matrix(1:2, nrow = 2), heights = c(3, 3))
-dotchart(FCM$FSC.Events_per_cm_2, main = "Symbionts", groups = FCM$Cage_Uncaged)
-dotchart(FCM_no$FSC.Events_per_cm_2, main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
+dotchart(log10(FCM$FSC.Events_per_cm_2), main = "Symbionts", groups = FCM$Cage_Uncaged)
+dotchart(log10(FCM_no$FSC.Events_per_cm_2), main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
 layout(1)
 ```
 Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as much as needed to the sample, but for now I will omit in my analyses (using dataframe FCM_no for "no outliers")
 
 ```{r FCM Violin Plot}
-ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
+FCM_violin <- ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  geom_text(aes(label = Pin_Number)) +
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
   facet_wrap(~Species)+
   labs(title = expression(paste("Symbionts per ", cm^2, " by caging treatment")))+
   theme(plot.title = element_text(hjust = 0.5))
+
+FCM_violin
+#ggsave("output/FCM_violin.png", width = 9, height = 6, plot = FCM_violin)
 ```
+
 same but other normalization:
+
 ```{r FCM Violin Plot Dry Weight}
 ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
   geom_violin() +
@@ -516,11 +520,6 @@ maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & !grepl("
 ggpairs(nut_wide_no_seep[, c(maximum_columns)],progress = FALSE)
 ```
 
-```{r}
-
-```
-
-
 ### Independence
 ```{r independence}
 
@@ -532,22 +531,21 @@ ggpairs(nut_wide_no_seep[, c(maximum_columns)],progress = FALSE)
 FCM Data Analysis:
 ```{r FCM vis, echo=FALSE}
 anova_PRU <- aov(FSC.Events_per_cm_2 ~ Cage_Uncaged, 
-                 data = FCM_no %>% 
+                 data = FCM %>% 
                    filter(Species=="Porites_rus"))
 summary(anova_PRU)
 
 #caging did not effect P. rus
 
 anova_PAC <- aov(FSC.Events_per_cm_2 ~ Cage_Uncaged, 
-                 data = FCM_no %>% 
+                 data = FCM %>% 
                    filter(Species=="Pocillopora_acuta"))
 summary(anova_PAC)
 #caging did not effect symbionts in P. acuta
 #this I have a bit of a hard time believing 
 ```
 
-### UNIVARIATE Growth Models
-
+### UNIVARIATE Models
 ```{r CALLIE THIS IS YOUR LOOPING CODE Singular model looping, warning=FALSE}
 #make the PAC data frame longer
 PAC_model_scaled_data_long <- pivot_longer(
@@ -567,12 +565,10 @@ PRU_model_scaled_data_long <- pivot_longer(
   cols = c(Minimum_Salinity_scaled:Low_Tide_Mean_Ammonia_umolL_scaled)) 
 names(PRU_model_scaled_data_long)[names(PRU_model_scaled_data_long) == "name"] <- "Parameter"
 
-#lmer(y~poly(x,2) + (1|random effect)
 ```
 
-##### linear growth pac
-
-```{r PAC linear model all scaled parameteres against growth}
+#### Pac growth linear
+```{r PAC linear growth model all scaled parameteres against}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
                             p.value = numeric(),
@@ -628,12 +624,11 @@ grid.arrange(grobs = plotlist, ncol = 2)
 model_results$Species <- "Pocillopora acuta"
 model_results$type <- "linear"
 
-all_PAC_growth_model_results <- model_results
+PAC_growth_model_results <- model_results
 
 ```
 
-##### polynomial growth PAC
-
+#### Pac growth polynomial
 ```{r PAC polynomial model all scaled parameteres against growth}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
@@ -690,66 +685,33 @@ grid.arrange(grobs = plotlist, ncol = 2)
 model_results$Species <- "Pocillopora acuta"
 model_results$type <- "polynomial"
 
-all_PAC_growth_model_results <- rbind(model_results, all_PAC_growth_model_results)
+PAC_growth_model_results <- rbind(model_results, PAC_growth_model_results)
 ```
 
-
-#### linear PAC symb
-
-```{r model all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
-                            stringsAsFactors = FALSE)
-
-plotlist <- list()
-
-parameters <- unique(PAC_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
-  
-  # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc and p-value
-    AICc <- AICc(model)
-  
-  # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["value", "Estimate"]
-  
-if (p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
-  }
-  }
-model_results %>% filter(p.value < 0.05)
-#grid.arrange(grobs = plotlist, ncol = 2)
-
-model_results$Species <- "Pocillopora acuta"
-model_results$type <- "linear"
-all_PAC_symb_model_results <- model_results
+#### PAC growth results
+```{r}
+PAC_growth_model_results
 ```
 
-So, nothing is changing the symbionts in acuta...
+```{r PAC growth multivariate dredge}
+PAC_growth_big_model <- lmer(Percent_Change ~ 
+                       Maximum_TA_scaled + 
+                       Low_Tide_Mean_Phosphate_umolL_scaled +
+                         CV_NN_umolL_scaled +
+                         CV_TA_scaled+
+                         	Minimum_pH_scaled +
+                       (1 | Genotype)+ (1|Cage_Uncaged), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
 
-##### PRU linear growth
+PAC_growth_big_model_dredge <- dredge(PAC_growth_big_model, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PAC_growth.avg = model.avg(PAC_growth_big_model_dredge, delta < 4)
+summary(PAC_growth.avg)
+PAC_growth.avg$sw
+```
+
+#### Pru growth linear
 
 ```{r PRU all variables scaled against growth, message=FALSE}
 model_results <- data.frame(Parameter = character(),
@@ -799,117 +761,10 @@ grid.arrange(grobs = plotlist, ncol = 2)
 model_results$Species <- "Porites rus"
 model_results$type <- "linear"
 
-all_PRU_growth_model_results <- model_results
+PRU_growth_model_results <- model_results
 ```
 
-
-```{r PRU symbionts}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
-
-parameters <- unique(PRU_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
-  
-  # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + Cage_Uncaged, data = subset_data)
-  
-  # Get AICc and p-value
-    AICc <- AICc(model)
-  
-  # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["value", "Estimate"]
-  
- if (p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
-  }
-  }
-model_results %>% filter(p.value < 0.05)
-grid.arrange(grobs = plotlist, ncol = 2)
-
-
-model_results$Species <- "Porites rus"
-model_results$type <- "linear"
-
-all_PRU_symb_model_results <- model_results
-```
-#### Polynomial models
-lmer(y~poly(x,2) + (1|random effect)
-
-```{r polynomialmodel all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
-
-parameters <- unique(PAC_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
-
-  # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc and p-value
-  AICc <- AICc(model)
-  
-  # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  
-  if (p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
-  }
-  }
-
-model_results %>% filter(p.value < 0.05)
-#grid.arrange(grobs = plotlist, ncol = 1)
-
-model_results$Species <- "Pocillopora acuta"
-model_results$type <- "polynomial"
-
-all_PAC_symb_model_results <- rbind(model_results, all_PAC_symb_model_results)
-```
-
-So, nothing is changing the symbionts in acuta...
+#### Pru growth polynomial
 
 ```{r PRU polynomial all variables scaled against growth, message=FALSE}
 model_results <- data.frame(Parameter = character(),
@@ -960,10 +815,199 @@ grid.arrange(grobs = plotlist, ncol = 2)
 model_results$Species <- "Porites rus"
 model_results$type <- "polynomial"
 
-all_PRU_growth_model_results <- model_results
+PRU_growth_model_results <- rbind(model_results,PRU_growth_model_results)
+```
+
+#### PRU growth results
+```{r}
+PRU_growth_model_results
+```
+
+```{r multivariate dredge}
+PRU_growth_big_model <- lmer(Percent_Change ~ 
+                       Low_Tide_Mean_Ammonia_umolL_scaled + 
+                       CV_Ammonia_umolL_scaled +
+                       (1 | Genotype)+ (1|Cage_Uncaged), 
+                                 data = PRU_model_data, 
+                                 na.action = na.pass)
+
+PRU_growth_big_model_dredge <- dredge(PRU_growth_big_model, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PRU_growth.avg = model.avg(PRU_growth_big_model_dredge, delta < 10)
+summary(PRU_growth.avg)
+PRU_growth.avg$sw
+```
+
+#### Pac symb linear
+
+```{r model all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+
+plotlist <- list()
+
+parameters <- unique(PAC_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
+  
+  # Fit the mixed-effects model
+  model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc and p-value
+    AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["value", "Estimate"]
+  
+if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+model_results %>% filter(p.value < 0.05)
+#grid.arrange(grobs = plotlist, ncol = 2)
+
+#model_results$Species <- "Pocillopora acuta"
+#model_results$type <- "linear"
+PAC_symb_model_results <- model_results
+```
+
+#### Pac symb polynomial
+
+```{r PAC polynomialmodel all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+plotlist <- list()
+
+parameters <- unique(PAC_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
+
+  # Fit the mixed-effects model
+  model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc and p-value
+  AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+
+model_results %>% filter(p.value < 0.05)
+#grid.arrange(grobs = plotlist, ncol = 1)
+
+#model_results$Species <- "Pocillopora acuta"
+#model_results$type <- "polynomial"
+
+PAC_symb_model_results <- rbind(model_results, PAC_symb_model_results)
+```
+
+#### Pac symb results
+
+```{r}
+PAC_symb_model_results
 ```
 
 
+
+#### Pru symb linear
+
+```{r PRU symbionts}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+plotlist <- list()
+
+parameters <- unique(PRU_model_scaled_data_long$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
+  
+  # Fit the mixed-effects model
+  model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + Cage_Uncaged, data = subset_data)
+  
+  # Get AICc and p-value
+    AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["value", "Estimate"]
+  
+ if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+model_results %>% filter(p.value < 0.05)
+grid.arrange(grobs = plotlist, ncol = 2)
+
+
+model_results$Species <- "Porites rus"
+model_results$type <- "linear"
+
+PRU_symb_model_results <- model_results
+```
+
+#### Pru symb polynomial
 
 ```{r PRU symbionts polynomial, message=FALSE}
 model_results <- data.frame(Parameter = character(),
@@ -1015,183 +1059,55 @@ grid.arrange(grobs = plotlist, ncol = 1)
 model_results$Species <- "Porites rus"
 model_results$type <- "polynomial"
 
-all_PRU_symb_model_results <- model_results
+PRU_symb_model_results <- rbind(model_results, PRU_symb_model_results)
 ```
 
+#### Pru symb results
 
-#### Dredged data models (aka is multiresponse better than univariate models)
-
-```{r collinearity in cv dredge parameters}
-ggpairs(PAC_model_data, columns = c("CV_Salinity_scaled",  
-                       "CV_Temperature_scaled",  
-                       "CV_TA_scaled",  
-                       "CV_pH_scaled"), progress = FALSE)
+```{r}
+PRU_symb_model_results
 ```
 
-```{r collinearity in pulse dredge parameters}
-ggpairs(PAC_model_data, columns = c("Low_Tide_Mean_Phosphate_umolL",  
-                       "Low_Tide_Mean_NN_umolL", 
-                       "Low_Tide_Mean_Ammonia_umolL",
-                       "Low_Tide_Mean_NNP_umolL"), progress = FALSE)
-```
-
-Extra exploratory plots:
-```{r exploratory plots with bw change}
-PAC_model_data_long <- pivot_longer(
-  data = PAC_model_data,
-  cols = c("Low_Tide_Mean_Phosphate_umolL",  
-                       "Low_Tide_Mean_NN_umolL", 
-                       "Low_Tide_Mean_Ammonia_umolL",
-                       "Low_Tide_Mean_NNP_umolL",
-           "CV_Salinity_scaled",  
-                       "CV_Temperature_scaled",  
-                       "CV_TA_scaled",  
-                       "CV_pH_scaled"),
-  names_to = "Parameter",
-  values_to = "Value")
-
-ggplot(PAC_model_data_long, aes(x = Value, y = Percent_Change)) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    facet_wrap(~ Parameter, scales = "free") +
-    theme_bw()
-```
-
-
-```{r exploratory plots with symb}
-ggplot(PAC_model_data_long, aes(x = Value, y = FSC.Events_per_cm_2)) +
-    geom_point() +
-    geom_smooth(method = "lm") +
-    facet_wrap(~ Parameter, scales = "free") +
-    theme_bw()
-```
-
-
-```{r Growth Dredge CV or Low Tide Pulse, warning=FALSE, message=FALSE}
-#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-#the above line works if you only include response and explanatory in the dataframe, but dredge can't handle it with random effects
-
-# Build the GLM model
-#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-PAC_cv_low_growth_model <- lmer(Percent_Change ~ 
-                       CV_Salinity_scaled + 
-                       CV_Temperature_scaled + 
-                       CV_TA_scaled + 
-                       CV_pH_scaled +
-                       Low_Tide_Mean_Phosphate_umolL_scaled + 
-                       Low_Tide_Mean_NN_umolL_scaled + 
-                       Low_Tide_Mean_Ammonia_umolL_scaled +
-                       Low_Tide_Mean_NNP_umolL_scaled +
-                       (1 | Genotype), 
-                                 data = PAC_model_data, 
-                                 na.action = na.pass)
-
-PAC_cv_low_growth_model_dredge <- dredge(PAC_cv_low_growth_model, trace = 2)
-#model.sel(PAC_cv_low_growth_model_dredge)
-PAC.avg_cv_low_growth_model = model.avg(PAC_cv_low_growth_model_dredge, delta < 5)
-summary(PAC.avg_cv_low_growth_model)
-PAC.avg_cv_low_growth_model$sw
-```
-
-Make the effects plots for the model with the most support:
-```{r Growth CV + Low tide best model effects plots}
-PAC_growth_cv_plus_lowtide_model <- lmer(Percent_Change ~ 
-#                       CV_Salinity_scaled + 
-#                       CV_Temperature_scaled + 
-                       CV_TA_scaled + 
-#                       CV_pH_scaled +
-                       (1 | Genotype), 
-                                 data = PAC_model_data, 
-                                 na.action = na.pass)
-plot(allEffects(PAC_growth_cv_plus_lowtide_model))
-```
-
-# April 17 Minimum Maximum models aka extremes drive change
-```{r  PAC Growth Dredge Min and Max, warning=FALSE, message=FALSE}
-#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-#the above line works if you only include response and explanatory in the dataframe, but dredge can't handle it with random effects
-
-# Build the GLM model
-#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-PAC_cv_minmax_growth_model <- lmer(Percent_Change ~ 
-                       Minimum_Salinity_scaled + 
-                       Minimum_Temperature_scaled + 
-                       Maximum_TA_scaled + 
-                       Minimum_pH_scaled +
-                       Maximum_NN_umolL_scaled + 
+```{r multivariate dredge}
+PRU_symb_big_model <- lmer(log10(FSC.Events_per_cm_2) ~ 
                        Maximum_Phosphate_umolL_scaled + 
-                       Maximum_NNP_umolL_scaled +
-                       (1 | Genotype), 
-                                 data = PAC_model_data, 
-                                 na.action = na.pass)
-
-PAC_cv_minmax_growth_model_dredge <- dredge(PAC_cv_minmax_growth_model, trace = 2)
-#model.sel(PAC_cv_low_growth_model_dredge)
-PAC.avg_minmax_growth_model = model.avg(PAC_cv_minmax_growth_model_dredge, delta < 10)
-summary(PAC.avg_minmax_growth_model)
-PAC.avg_minmax_growth_model$sw
-```
-
-```{r PRU Growth Dredge Min and Max, warning=FALSE, message=FALSE}
-PRU_cv_minmax_growth_model <- lmer(Percent_Change ~ 
-                       Minimum_Salinity_scaled + 
-                       Minimum_Temperature_scaled + 
-                       Maximum_TA_scaled + 
-                       Minimum_pH_scaled +
-                       Maximum_NN_umolL_scaled + 
-                       Maximum_Phosphate_umolL_scaled + 
-                       Maximum_NNP_umolL_scaled +
-                       (1 | Genotype), 
+                       Low_Tide_Mean_Phosphate_umolL_scaled +
+                       (1 | Genotype)+ (1|Cage_Uncaged), 
                                  data = PRU_model_data, 
                                  na.action = na.pass)
 
-PRU_cv_minmax_growth_model_dredge <- dredge(PRU_cv_minmax_growth_model, trace = 2)
+PRU_symb_big_model_dredge <- dredge(PRU_symb_big_model, trace = 2)
 #model.sel(PAC_cv_low_growth_model_dredge)
-PRU.avg_minmax_growth_model = model.avg(PRU_cv_minmax_growth_model_dredge, delta < 10)
-summary(PRU.avg_minmax_growth_model)
-PRU.avg_minmax_growth_model$sw
-```
-
-### Symbiont Count Models
-
-```{r Symbiont data CV AND low tide data dredge, warning=FALSE, message=FALSE}
-# Build the GLM model
-#PAC_cv_model <- glm(Percent_Change ~ ., data = PAC_cv_model_data, na.action = na.pass)
-PAC_cv_low_symb_model <- lmer(log10(FSC.Events_per_cm_2) ~
-                       Low_Tide_Mean_Phosphate_umolL_scaled + 
-                       Low_Tide_Mean_NN_umolL_scaled + 
-                       Low_Tide_Mean_Ammonia_umolL_scaled +
-                       Low_Tide_Mean_NNP_umolL_scaled +
-                       (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_model_data, 
-                                 na.action = na.pass)
-
-PAC_cv_low_symb_model_dredge <- dredge(PAC_cv_low_symb_model, trace = 2)
-model.sel(PAC_cv_low_symb_model_dredge)
-PAC_cv_low_symb_model_dredge_model.avg = model.avg(PAC_cv_low_symb_model_dredge, delta < 8)
-summary(PAC_cv_low_symb_model_dredge_model.avg)
-PAC_cv_low_symb_model_dredge_model.avg$sw
+PRU_symb.avg = model.avg(PRU_symb_big_model_dredge, delta < 2)
+summary(PRU_symb.avg)
+PRU_symb.avg$sw
 ```
 
 
-```{r Symbiont cv and low tide best model effects plots}
-PAC_symb_cv_plus_lowtide_model <- lmer(log10(FSC.Events_per_cm_2) ~ 
-                       CV_Salinity + 
-                       CV_Temperature + 
-                       CV_TA + 
-                       CV_pH +
-                       (1 | Genotype) + (1 | Cage_Uncaged), 
-                                 data = PAC_model_data, 
-                                 na.action = na.pass)
-plot(allEffects(PAC_symb_cv_plus_lowtide_model))
+## ISOTOPES
+
+### Exploratory plots:
+If you could plot their 15N and 13C host and symbiont values on 2 different plots that would be a good place to start. One plot for 15N and one for 13C and then facet by whatever your categories are (location on gradient?). Then we can look at how overlapped their isotopes are:
+
+```{r}
+CV <- names(explanatory_all_wide)[grepl("CV_", names(explanatory_all_wide), names(explanatory_all_wide))]
+mean_low <- names(explanatory_all_wide)[grepl("Low_Tide_Mean_", names(explanatory_all_wide), names(explanatory_all_wide))]
+
+filter_values <- c("Minimum_Salinity",
+                   "Minimum_Temperature",
+                   "Maximum_TA",
+                   "Minimum_pH",
+                   "Maximum_NN_umolL",
+                   "Maximum_Phosphate_umolL",
+                   "Maximum_NNP_umolL")
+
+SI_data1 <- left_join(SI, explanatory_all,by = join_by(CowTagID))
+SI_data_wide <- left_join(SI, explanatory_all_wide,by = join_by(CowTagID))
+
+# Filter the dataframe SI_data
+SI_data <- SI_data1[SI_data1$Parameter %in% filter_values, ] 
 ```
 
-
-#### ISOTOPES
-If you could plot their 15N and 13C host and symbiont values on 2 different plots that would be a good place to start. One plot for 15N and one for 13C and then facet by whatever your categories are (location on gradient?). Then we can look at how overlapped their isotopes are
-
-"δ15N...........vs..AIR."
-"δ13C............vs..VPDB."
 
 ```{r 15N host, fig.width=15, fig.height=15}
 # species <- unique(SI_data$Species) # has NA
@@ -1204,7 +1120,7 @@ for (sp in species) {
   # Create plot for the current species
   plot <- species_data %>%
     ggplot(aes(x = value, y = δ15N)) +
-    geom_point() +
+    geom_point(aes(shape = Genotype)) +
     geom_smooth(method = "lm") +
     facet_wrap(~ Parameter, scales = "free_x") +
     ggtitle(paste(sp)) +  #Add species name to the plot title
@@ -1227,7 +1143,7 @@ for (sp in species) {
   # Create plot for the current species
   plot <- species_data %>%
     ggplot(aes(x = value, y = δ13C)) +
-    geom_point() +
+    geom_point(aes(shape = Genotype)) +
     geom_smooth(method = "lm") +
     facet_wrap(~ Parameter, scales = "free") +
     ggtitle(paste(sp)) +  #Add species name to the plot title
@@ -1287,43 +1203,129 @@ for (sp in species) {
 }
 ```
 
-```{r}
+
+# YOUR DATA FRAME IS REPEATING - GO FIX THIS
+
+```{r pc plots, warning=FALSE, message=FALSE, fig.width=15, fig.height=8}
+create_plot <- function(data, species, HS, y_variable, title_suffix) {
+  data %>%
+    filter(Species == species, HS == HS) %>% 
+    ggplot(aes(x = pulse_pc1, y = !!sym(y_variable))) +
+    geom_point(aes(shape = Genotype)) +
+    geom_smooth(method = "lm") +
+    ggtitle(paste(species, HS, title_suffix)) +  
+    theme_bw() +
+    theme(legend.position = "none")
+}
+
+plot1 <- create_plot(SI_data_wide, "Porites rus", "symb", "δ15N", "δ15N")
+plot2 <- create_plot(SI_data_wide, "Porites rus", "host", "δ15N", "δ15N")
+plot3 <- create_plot(SI_data_wide, "Porites rus", "host", "Δ15N", "minus symbiont, Δ15N")
+plot4 <- create_plot(SI_data_wide, "Porites rus", "symb", "δ13C", "δ13C")
+plot5 <- create_plot(SI_data_wide, "Porites rus", "host", "δ13C", "δ13C")
+plot6 <- create_plot(SI_data_wide, "Porites rus", "host", "Δ13C", "minus symbiont, Δ13C")
+
+
+legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "bottom"))), "guide-box")
+
+rus_pc_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, legend, ncol = 3)
+
+#ggsave(filename = paste("output/exploratory_isotope_rus_pc_plots.png", sep = ""),
+#         plot = rus_pc_plots, 
+#         width = 15, height = 8)
+```
+
+```{r acuta pc plots, warning=FALSE, message=FALSE, fig.width=12, fig.height=6}
+create_SI_plot <- function(data, species, HS, y_variable, title_suffix) {
+  data %>%
+    filter(Species == species, HS == HS) %>% 
+    ggplot(aes(x = pulse_pc1, y = !!sym(y_variable))) +
+    geom_point(aes(shape = Genotype)) +
+    geom_smooth(method = "lm") +
+    ggtitle(paste(species, HS, title_suffix)) +  
+    theme_bw() +
+    theme(legend.position = "none")
+}
+
+plot1 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "symb", "δ15N", "δ15N")
+plot2 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "δ15N", "δ15N")
+plot3 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "Δ15N", "minus symbiont, Δ15N")
+plot4 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "symb", "δ13C", "δ13C")
+plot5 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "δ13C", "δ13C")
+plot6 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "Δ13C", "minus symbiont, Δ13C")
+
+
+legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "bottom"))), "guide-box")
+
+acuta_pc_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 3)
+
+#ggsave(filename = paste("output/exploratory_isotope_acuta_pc_plots.png", sep = ""),
+#         plot = acuta_pc_plots, 
+#         width = 15, height = 8)
+
+```
+
+
+
+```{r, warning=FALSE, message=FALSE, fig.width=12, fig.height=6}
 plot1 <- SI_data_wide %>%
     filter(Species == "Porites rus", HS == "symb") %>% 
     ggplot(aes(x = pulse_pc1, y = δ15N)) +
-    geom_point() +
+    geom_point(aes(shape=Genotype)) +
     geom_smooth(method = "lm") +
     ggtitle("Porites rus symb δ15N") +  #Add species name to the plot title
-    theme_bw()
+    theme_bw() +
+  theme(legend.position = "none")
 
 plot2 <- SI_data_wide %>%
     filter(Species == "Porites rus", HS == "host") %>% 
     ggplot(aes(x = pulse_pc1, y = δ15N)) +
-    geom_point() +
+    geom_point(aes(shape=Genotype)) +
     geom_smooth(method = "lm") +
     ggtitle("Porites rus host δ15N") +  #Add species name to the plot title
-    theme_bw()
+    theme_bw()+
+  theme(legend.position = "none")
 
 plot3 <- SI_data_wide %>%
-    filter(Species == "Pocillopora acuta", HS == "symb") %>% 
-    ggplot(aes(x = pulse_pc1, y = δ15N)) +
-    geom_point() +
+    filter(Species == "Porites rus", HS == "host") %>% 
+    ggplot(aes(x = pulse_pc1, y = Δ15N)) +
+    geom_point(aes(shape=Genotype)) +
     geom_smooth(method = "lm") +
-    ggtitle("Pocillopora acuta symb δ15N") +  #Add species name to the plot title
-    theme_bw()
+    ggtitle("Porites rus Δ15N") +  #Add species name to the plot title
+    theme_bw()+
+  theme(legend.position = "none")
 
 plot4 <- SI_data_wide %>%
+    filter(Species == "Pocillopora acuta", HS == "symb") %>% 
+    ggplot(aes(x = pulse_pc1, y = δ15N)) +
+    geom_point(aes(shape=Genotype)) +
+    geom_smooth(method = "lm") +
+    ggtitle("Pocillopora acuta symb δ15N") +  #Add species name to the plot title
+    theme_bw()+
+  theme(legend.position = "none")
+
+plot5 <- SI_data_wide %>%
     filter(Species == "Pocillopora acuta", HS == "host") %>% 
     ggplot(aes(x = pulse_pc1, y = δ15N)) +
-    geom_point() +
+    geom_point(aes(shape=Genotype)) +
     geom_smooth(method = "lm") +
     ggtitle("Pocillopora acuta host δ15N") +  #Add species name to the plot title
-    theme_bw()
+    theme_bw()+
+  theme(legend.position = "none")
 
-grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+plot6 <- SI_data_wide %>%
+    filter(Species == "Pocillopora acuta", HS == "host") %>% 
+    ggplot(aes(x = pulse_pc1, y = Δ15N)) +
+    geom_point(aes(shape=Genotype)) +
+    geom_smooth(method = "lm") +
+    ggtitle("Pocillopora acuta Δ15N") +  #Add species name to the plot title
+    theme_bw()+
+  theme(legend.position = "none")
+
+grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 3)
 ```
 
-```{r}
+```{r, eval=FALSE, include=FALSE}
 plot1 <- SI_data_wide %>%
     filter(Species == "Porites rus", HS == "symb") %>% 
     ggplot(aes(x = pulse_pc1, y = δ13C)) +
@@ -1341,6 +1343,14 @@ plot2 <- SI_data_wide %>%
     theme_bw()
 
 plot3 <- SI_data_wide %>%
+    filter(Species == "Porites rus", HS == "host") %>% 
+    ggplot(aes(x = pulse_pc1, y = Δ13C)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    ggtitle("Porites rus host δ13C") +  #Add species name to the plot title
+    theme_bw()
+
+plot4 <- SI_data_wide %>%
     filter(Species == "Pocillopora acuta", HS == "symb") %>% 
     ggplot(aes(x = pulse_pc1, y = δ13C)) +
     geom_point() +
@@ -1348,7 +1358,7 @@ plot3 <- SI_data_wide %>%
     ggtitle("Pocillopora acuta symb δ13C") +  #Add species name to the plot title
     theme_bw()
 
-plot4 <- SI_data_wide %>%
+plot5 <- SI_data_wide %>%
     filter(Species == "Pocillopora acuta", HS == "host") %>% 
     ggplot(aes(x = pulse_pc1, y = δ13C)) +
     geom_point() +
@@ -1356,8 +1366,257 @@ plot4 <- SI_data_wide %>%
     ggtitle("Pocillopora acuta host δ13C") +  #Add species name to the plot title
     theme_bw()
 
-grid.arrange(plot1, plot2, plot3, plot4, ncol = 2)
+plot6 <- SI_data_wide %>%
+    filter(Species == "Pocillopora acuta", HS == "host") %>% 
+    ggplot(aes(x = pulse_pc1, y = Δ13C)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    ggtitle("Porites rus host δ13C") +  #Add species name to the plot title
+    theme_bw()
+
+grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 3)
+```
+
+### Exploring plots of symbionts and growth vs. isotope values
+```{r}
+SI_data_wide <- left_join(SI_data_wide, FCM[,c("Placement_Code", "FSC.Events_per_cm_2")])
+SI_data_wide$log10symbcount <- log10(SI_data_wide$FSC.Events_per_cm_2)
+```
+
+If you remember, the P. acuta did not have anything affecting its symbionts, but rus did. 
+
+```{r Acuta vs symbionts, fig.width=12, fig.height=6}
+
+create_SI_plot <- function(data, species, HS, x_variable, y_variable, title_suffix) {
+  data %>%
+    filter(Species == species, HS == HS) %>% 
+    ggplot(aes(x = !!sym(x_variable), y = !!sym(y_variable))) +
+    geom_point(aes(shape = Genotype)) +
+    geom_smooth(method = "lm") +
+    ggtitle(paste(species, HS, title_suffix)) +  
+    theme_bw() +
+    theme(legend.position = "none")
+}
+
+plot1 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "symb", "log10symbcount","δ15N", "δ15N")
+plot2 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "log10symbcount", "δ15N", "δ15N")
+plot3 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "log10symbcount", "Δ15N", "minus symbiont, Δ15N")
+plot4 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "symb", "log10symbcount", "δ13C", "δ13C")
+plot5 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "log10symbcount", "δ13C", "δ13C")
+plot6 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "log10symbcount", "Δ13C", "minus symbiont, Δ13C")
+
+
+legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "top"))), "guide-box")
+
+acuta_SIvssymb_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, legend, ncol = 3)
+```
+
+I'm not surprised these mostly look like flat lines. Let's look at the symbionts versus the rus:
+
+```{r Prus symb vs isotopes plots, warning=FALSE, message=FALSE, fig.height=6, fig.width=10}
+plot1 <- create_SI_plot(SI_data_wide, "Porites rus", "symb", "log10symbcount","δ15N", "δ15N")
+plot2 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "log10symbcount", "δ15N", "δ15N")
+plot3 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "log10symbcount", "Δ15N", "minus symbiont, Δ15N")
+plot4 <- create_SI_plot(SI_data_wide, "Porites rus", "symb", "log10symbcount", "δ13C", "δ13C")
+plot5 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "log10symbcount", "δ13C", "δ13C")
+plot6 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "log10symbcount", "Δ13C", "minus symbiont, Δ13C")
+
+
+legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "top"))), "guide-box")
+
+rus_SIvssymb_plots <- grid.arrange(plot1, plot2, plot4, plot5, plot3, plot6, legend, ncol = 2)
+```
+
+Ok, we expect Δ13C(h-s) to increase with increasing symbiont populations. 
+
+#### Just running a model to check that bc the last plot looks very significant:
+
+```{r rus symbiont vs isotope C}
+Rus_data <- SI_data_wide %>%
+  filter(Species == "Porites rus")
+model <- lmer(Δ13C ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = Rus_data)
+car::Anova(model)
+```
+Ok so the host is going to have more 13C than the symbiont at higher symbiont populations in Porties rus corals. 
+
+Increased contributions of heterotrophically-derived carbon results in more pronounced differences between δ13C levels in host and Symbiodiniaceae (∆13C = δ13Chost - δ13Csymbiont) (Muscatine et al., 1989; M. E. A. Santos et al., 2021).
+
+“During periods of high coral photosynthesis the internal carbon pool becomes enriched in 13C (higher δ13C values) as dissolved inorganic carbon enriched in 12C is preferentially fixed” [Wall et al., 2020, p. 954]. 
+
+```{r Rus Δ13C ~ Maximum_Phosphate_umolL}
+model <- lmer(Δ13C ~ Maximum_Phosphate_umolL+ (1|Genotype), data = Rus_data)
+car::Anova(model)
+```
+```{r Rus Δ13C ~ Low_Tide_Mean_Phosphate_umolL}
+model <- lmer(Δ13C ~ Low_Tide_Mean_Phosphate_umolL+ (1|Genotype), data = Rus_data)
+car::Anova(model)
 ```
 
 
+```{r rus symbiont vs isotope N}
+Rus_data <- SI_data_wide %>%
+  filter(Species == "Porites rus")
+model <- lmer(Δ15N ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = Rus_data)
+car::Anova(model)
+```
+
+But, as expected from the plot, this is not congruent between C and N isotopes. 15N normally comes from more heterotrophy, whereas 14N is normally fixed from the environment.
+
+## Some univariate models with isotopes:
+
+```{r PAC_Δ15N_model_results}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+
+plotlist <- list()
+
+parameters <- unique(SI_data$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(SI_data, Parameter == parameter)
+  subset_data <- subset(subset_data, Species == "Pocillopora acuta")
+  
+  # Fit the mixed-effects model
+  model <- lmer(Δ15N ~ value + (1|Genotype), data = subset_data)
+  
+  # Get AICc and p-value
+    AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["value", "Estimate"]
+  
+  # Calculate marginal and conditional R-squared values
+    rsq <- as.numeric(r.squaredGLMM(model))
+    marginal_R2 <- rsq[1]
+    conditional_R2 <- rsq[2]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate,
+                                                     Marginal_R2 = marginal_R2,
+                                                     Conditional_R2 = conditional_R2))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+print(model_results)
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Pocillopora acuta"
+model_results$type <- "linear"
+
+PAC_Δ15N_model_results <- model_results
+```
+
+```{r PAC_Δ13C_model_results}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value = numeric(),
+                            Estimate = numeric(),
+                            stringsAsFactors = FALSE)
+
+plotlist <- list()
+
+parameters <- unique(SI_data$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(SI_data, Parameter == parameter)
+  subset_data <- subset(subset_data, Species == "Pocillopora acuta")
+  
+  # Fit the mixed-effects model
+  model <- lmer(Δ13C ~ value + (1|Genotype), data = subset_data)
+  
+  # Get AICc and p-value
+    AICc <- AICc(model)
+  
+  # Get p-value from summary
+  model_summary <- summary(model)
+  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
+  Estimate <- model_summary$coefficients["value", "Estimate"]
+  
+  # Calculate marginal and conditional R-squared values
+    rsq <- as.numeric(r.squaredGLMM(model))
+    marginal_R2 <- rsq[1]
+    conditional_R2 <- rsq[2]
+  
+  if (p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(data.frame(Parameter = parameter,
+                                                     AICc = AICc,
+                                                     p.value = p.value,
+                                                     Estimate = Estimate,
+                                                     Marginal_R2 = marginal_R2,
+                                                     Conditional_R2 = conditional_R2))
+    
+    # Create an effects plot using ggpredict
+    effect_plot <- ggpredict(model, terms = "value[all]")
+    
+    # Extract the ggplot object from the ggpredict object
+    ggplot_obj <- plot(effect_plot)
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+  }
+  }
+print(model_results)
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Pocillopora acuta"
+model_results$type <- "linear"
+
+PAC_Δ13C_model_results <- model_results
+```
+
+
+### Versus growth
+
+```{r}
+SI_data_wide <- left_join(SI_data_wide, BW[,c("Placement_Code", "Percent_Change")])
+SI_data_wide$Percent_Change <-100*SI_data_wide$Percent_Change
+```
+
+```{r, warning=FALSE, message=FALSE}
+plot1 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "symb", "Percent_Change","δ15N", "δ15N")
+plot2 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "Percent_Change", "δ15N", "δ15N")
+plot3 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "Percent_Change", "Δ15N", "minus symbiont, Δ15N")
+plot4 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "symb", "Percent_Change", "δ13C", "δ13C")
+plot5 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "Percent_Change", "δ13C", "δ13C")
+plot6 <- create_SI_plot(SI_data_wide, "Pocillopora acuta", "host", "Percent_Change", "Δ13C", "minus symbiont, Δ13C")
+
+
+legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "top"))), "guide-box")
+
+acuta_SIvsgrowth_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, legend, ncol = 3)
+```
+
+```{r}
+plot1 <- create_SI_plot(SI_data_wide, "Porites rus", "symb", "Percent_Change","δ15N", "δ15N")
+plot2 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "Percent_Change", "δ15N", "δ15N")
+plot3 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "Percent_Change", "Δ15N", "minus symbiont, Δ15N")
+plot4 <- create_SI_plot(SI_data_wide, "Porites rus", "symb", "Percent_Change", "δ13C", "δ13C")
+plot5 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "Percent_Change", "δ13C", "δ13C")
+plot6 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "Percent_Change", "Δ13C", "minus symbiont, Δ13C")
+
+
+legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "top"))), "guide-box")
+
+rus_SIvsgrowth_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, legend, ncol = 3)
+```
 
