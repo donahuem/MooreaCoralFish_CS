@@ -44,4 +44,8 @@ SI_meta_Δ_calc$Δ13C <- SI_meta_Δ_calc$δ13C_host - SI_meta_Δ_calc$δ13C_symb
 
 SI_meta <- left_join(SI_meta, SI_meta_Δ_calc[,c("Micro_Vial", "Δ15N","Δ13C")])
 
+SI_meta$C_N_ratio <- SI_meta$μg.C / SI_meta$μg.N
+SI_meta$Percent_N <- ((SI_meta$μg.N* 0.001) /(SI_meta$Weight..mg.)) * 100
+SI_meta$Percent_C <- ((SI_meta$μg.C* 0.001) /(SI_meta$Weight..mg.)) * 100
+
 write_csv(SI_meta, here("Data","SI_Tidy.csv"))
