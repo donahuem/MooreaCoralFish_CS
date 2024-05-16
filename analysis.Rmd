@@ -30,6 +30,7 @@ library(MuMIn) #dredge
 library(effects) #effects plots for dredged models
 library(curl) #curl
 library(gridExtra)
+library(vegan) #pcoa
 ```
 
 
@@ -42,8 +43,8 @@ explanatory_seasonal <- read.csv("data/Explanatory_variables.csv")
 turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv")
 
 #explanatory 2
-cv_low_wet <- read.csv("data/Wet_Nutrients_Processed_CV_Low.csv")
-cv_low_all <- read.csv("data/All_Nutrients_Processed_CV_Low.csv")
+#cv_low_wet <- read.csv("data/Wet_Nutrients_Processed_CV_Low.csv")
+#cv_low_all <- read.csv("data/All_Nutrients_Processed_CV_Low.csv")
 
 #Response data
 sa <- read.csv("data/Surface_Area.csv")
@@ -64,6 +65,12 @@ meta <- read.csv("data/coral_metadata.csv")
 PCA_Pulse_variables_wide <- read.csv("data/PCA_Pulse_variables_wide.csv")
 #explan <- read.csv("data/Explanatory_variables_wide.csv")
 ```
+
+```{r}
+SI$Percent_N15 <- SI$δ15N...........vs..AIR./SI$μg.N * 100
+SI$Percent_C13 <- SI$δ13C............vs..VPDB./SI$μg.C * 100
+```
+
 
 ```{r clean turb}
 turb1 <- turb %>% 
@@ -153,6 +160,8 @@ CV_columns <- names(all_data_wide)[grepl("CV_", names(all_data_wide), names(all_
 
 mean_low_columns <- names(all_data_wide)[grepl("Low_Tide_Mean_", names(all_data_wide), names(all_data_wide))]
 
+variance_columns <- names(all_data_wide)[grepl("sd_", names(all_data_wide), names(all_data_wide))]
+
 #PAC_model_data$CV_Salinity_scaled <- scale(PAC_model_data$CV_Salinity, TRUE, TRUE)
 #PAC_model_data$CV_Temperature_scaled  <-  scale(PAC_model_data$CV_Temperature, TRUE, TRUE)
 #PAC_model_data$CV_TA_scaled  <-  scale(PAC_model_data$CV_TA, TRUE, TRUE)
@@ -191,21 +200,30 @@ for (col in maximum_columns) {
   all_data_wide[[scaled_variable]] <- scaled_values[, 1]
 }
 
+for (col in variance_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_data_wide[[col]], TRUE, TRUE)
+  all_data_wide[[scaled_variable]] <- scaled_values[, 1]
+}
+
 scaled_cv_columns <- names(all_data_wide)[grepl("^CV.*_scaled$", names(all_data_wide))]
 scaled_ml_columns <- names(all_data_wide)[grepl("^Low.*_scaled$", names(all_data_wide))]
 scaled_min_columns <- names(all_data_wide)[grepl("^Minimum.*_scaled$", names(all_data_wide))]
 scaled_max_columns <- names(all_data_wide)[grepl("^Maximum.*_scaled$", names(all_data_wide))]
+scaled_sd_columns <- names(all_data_wide)[grepl("^sd.*_scaled$", names(all_data_wide))]
 
 # Extract column names for filtering
 selected_columns <- c("FSC.Events_per_cm_2", "Percent_Change", "Genotype", "Cage_Uncaged", "Species",
-                      minimum_columns, 
-                      maximum_columns,
-                      CV_columns,
-                      mean_low_columns,
+ #                     minimum_columns, 
+#                      maximum_columns,
+#                      CV_columns,
+#                      mean_low_columns,
                       scaled_min_columns, 
                       scaled_max_columns,
-                      scaled_cv_columns,
-                      scaled_ml_columns)
+#                      scaled_cv_columns,
+                      scaled_ml_columns,
+                      scaled_sd_columns,
+                      "Pin_Number", "FSC.Events_per_g_dry_weight")
 
 model_data <- all_data_wide[, selected_columns]
 
@@ -218,12 +236,14 @@ PRU_model_data <- na.omit(model_data %>%
         filter(Species == "Porites rus")) # %>% 
 #  filter(Cage_Uncaged == "C")
 
-dredge.data <- na.omit(model_data[, c(maximum_columns, 
-                                    minimum_columns #,
+dredge.data <- na.omit(model_data[, c(scaled_ml_columns,
+                      scaled_sd_columns
+                      #mean_low_columns, 
+#                                    minimum_columns,
 #                                    mean_columns, #removed bc not enough data for the amount of variables
-#                                    CV_columns,
-#                      CV_columns,
-#                      mean_low_columns,
+#                                  CV_columns,
+#                                  variance_columns
+#                     mean_low_columns,
 #                      scaled_min_columns, 
 #                      scaled_max_columns,
 #                      scaled_cv_columns,
@@ -433,23 +453,11 @@ BW_long <- response_data %>%
 growth_v_sp_plot <- ggplot(data = BW_long, aes(x = `Pocillopora acuta`, y = `Porites rus`))+
   geom_point() +
   labs(title = "% ∆ BW between species by Pin Number")
+
 #  geom_smooth(method = "lm") +
   growth_v_sp_plot
 #ggsave("output/caged_growth_v_sp_plot.png", width = 9, height = 6, plot = growth_v_sp_plot)
 ```
-
-#### PC of response?
-```{r}
-pca.data <-na.omit( PRU_response_data[,c("Percent_Change", "FSC.Events_per_cm_2", "Δ15N","Δ13C",  "δ15N_host","δ15N_symb", "δ13C_host", "δ13C_symb", "C_N_ratio_host","C_N_ratio_symb", "Percent_N_host", "Percent_N_symb","Percent_C_host","Percent_C_symb")])
-pca = princomp(pca.data, cor=TRUE)
-summary(pca)
-loadings(pca)
-```
-
-```{r}
-biplot(pca)
-```
-
 
 #### Look for Outliers:
 Buoyant Weight
@@ -524,9 +532,6 @@ ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill =
   theme(plot.title = element_text(hjust = 0.5))
 ```
 
-## NS RECCOMMENDS TO DO THIS ANOVA RUNNING WITH RE OF PIN NUMBER
-
-
 ### Collinearity
 need to make a dataframe that's long that has all the nutrient metrics and independent variables
 Here's the thing: we KNOW the nutrients are collinear
@@ -536,8 +541,21 @@ For example, here's a pairs plot for the maximum of all the nutrient values:
 nut_wide_no_seep<- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
 maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & !grepl("Salinity|Temperature|pH|Ammonia_umol", names(nut_wide))]
 
-ggpairs(nut_wide_no_seep[, c(maximum_columns)],progress = FALSE)
+#ggpairs( all_nut_no_seep[, c(CV_columns,variance_columns)], progress = FALSE)
+#correlation_matrix <- cor(CV_columns, variance_columns)
+
+all_nut_no_seep<- all_nut[all_nut$CowTagID != 'VSEEP', ]
+plot1 <- all_nut_no_seep %>% 
+  ggplot(aes(x=CV_Silicate_umolL, y = sd_Silicate_umolL))+
+  geom_point()
+  
+plot2 <- all_nut_no_seep %>% 
+  ggplot(aes(x=CV_Silicate_umolL, y = Mean_Silicate_umolL))+
+  geom_point()
+
+grid.arrange(plot1, plot2, ncol =2)
 ```
+
 
 ### Independence
 ```{r independence}
@@ -547,20 +565,20 @@ ggpairs(nut_wide_no_seep[, c(maximum_columns)],progress = FALSE)
 ### Data Analysis
 ```{r}
 PAC_model_scaled_data_long <- pivot_longer(
-  data = PAC_model_data[,c(1:5,32:57)],
-  cols = c(Minimum_Salinity_scaled:Low_Tide_Mean_Ammonia_umolL_scaled)) 
+  data = PAC_model_data[,c(1:5,6:32, 33,34)], #33 is the Pin_Number
+  cols = c(Minimum_Salinity_scaled:sd_Ammonia_umolL_scaled)) 
 names(PAC_model_scaled_data_long)[names(PAC_model_scaled_data_long) == "name"] <- "Parameter"
 
-PAC_model_data_long <- pivot_longer(
-  data = PAC_model_data[,c(1:5,6:31)],
-  cols = c(Minimum_Salinity:Low_Tide_Mean_Ammonia_umolL)) 
-names(PAC_model_data_long)[names(PAC_model_data_long) == "name"] <- "Parameter"
+#PAC_model_data_long <- pivot_longer(
+#  data = PAC_model_data[,c(1:5,6:31)],
+#  cols = c(Minimum_Salinity:Low_Tide_Mean_Ammonia_umolL)) 
+#names(PAC_model_data_long)[names(PAC_model_data_long) == "name"] <- "Parameter"
 
 
 #make the PRU data frame longer
 PRU_model_scaled_data_long <- pivot_longer(
-  data = PRU_model_data[,c(1:5,32:57)],
-  cols = c(Minimum_Salinity_scaled:Low_Tide_Mean_Ammonia_umolL_scaled)) 
+  data = PRU_model_data[,c(1:5,6:32, 33,34)], #67 is the Pin_Number
+  cols = c(Minimum_Salinity_scaled:sd_Ammonia_umolL_scaled)) 
 names(PRU_model_scaled_data_long)[names(PRU_model_scaled_data_long) == "name"] <- "Parameter"
 ```
 
@@ -599,7 +617,9 @@ parameters <- unique(PAC_model_scaled_data_long$Parameter)
 
 for (parameter in parameters) {
   # Create a subset of data for the current parameter
-  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
+  subset_data <- PAC_model_scaled_data_long%>% 
+    filter(Parameter == parameter)
+#  %>% filter(Cage_Uncaged == "C")
   
   # Fit the mixed-effects model
   linear_model <- lmer(Percent_Change ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
@@ -654,12 +674,12 @@ for (parameter in parameters) {
                                                      p.value2 = "NA",
                                                      Estimate1 = polynomial_Estimate1,
                                                      Estimate2 = polynomial_Estimate2,
-                                                     type = "linear"))
+                                                     type = "polynomial"))
     
     # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
       geom_point() +
-      geom_smooth(method = "lm") +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
       labs(x = parameter) +
       theme_bw()
     }
@@ -693,10 +713,35 @@ PAC_growth_model_results <- model_results
 PAC_growth_model_results[order(PAC_growth_model_results$AICc), c(1, 7, 2:6)]
 ```
 
+##### Multivariate
+
+```{r}
+multivariate_PAC_growth <- lmer(Percent_Change ~ poly(sd_pH_scaled,2) + poly(Minimum_Salinity_scaled,2) + poly(Low_Tide_Mean_Phosphate_umolL_scaled, 2) + (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+
+summary(multivariate_PAC_growth)
+car::Anova(multivariate_PAC_growth)
+```
+
+
+```{r multivariate dredge}
+multivariate_PAC_growth <- lmer(Percent_Change ~ 
+                       poly(sd_pH_scaled,2) + 
+                         poly(Minimum_Salinity_scaled,2) + 
+                         poly(Low_Tide_Mean_Phosphate_umolL_scaled, 2) +
+                       (1 | Genotype)+ (1|Cage_Uncaged), 
+                                 data = PAC_model_data, 
+                                 na.action = na.pass)
+
+multivariate_PAC_growth_dredge <- dredge(multivariate_PAC_growth, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PAC_growth.avg = model.avg(multivariate_PAC_growth_dredge, delta < 15)
+summary(PAC_growth.avg)
+PAC_growth.avg$sw
+```
 
 #### Pru growth 
 
-```{r}
+```{r, message=FALSE}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
                             p.value1 = numeric(),
@@ -711,11 +756,14 @@ parameters <- unique(PRU_model_scaled_data_long$Parameter)
 
 for (parameter in parameters) {
   # Create a subset of data for the current parameter
-  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
+    subset_data <- PRU_model_scaled_data_long%>% 
+    filter(Parameter == parameter) %>% 
+      filter(Cage_Uncaged == "C") %>% 
+       filter(!(Pin_Number == "14"))
   
   # Fit the mixed-effects model
-  linear_model <- lmer(Percent_Change ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  polynomial_model <- lmer(Percent_Change ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  linear_model <- lmer(Percent_Change ~ value + (1|Genotype), data = subset_data)
+  polynomial_model <- lmer(Percent_Change ~ poly(value,2) + (1|Genotype), data = subset_data)
   
   # Get AICc
   linear_AICc <- AICc(linear_model)
@@ -761,12 +809,13 @@ for (parameter in parameters) {
                                                      p.value2 = "NA",
                                                      Estimate1 = polynomial_Estimate1,
                                                      Estimate2 = polynomial_Estimate2,
-                                                     type = "linear"))
+                                                     type = "polynomial"))
     
     # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
       geom_point() +
-      geom_smooth(method = "lm") +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      geom_text(aes(label = Pin_Number)) +
       labs(x = parameter) +
       theme_bw()
     }
@@ -780,67 +829,28 @@ PRU_growth_model_results <- model_results
 PRU_growth_model_results[order(PRU_growth_model_results$AICc), c(8, 1, 7, 2:6)]
 ```
 
+##### Multivariate PRU Growth:
 
-#### Pac symb linear
+Callie, you gotta remember you can't keep the uncaged rus in this bih
+
+```{r, eval = FALSE}
+multivariate_PRU_growth <- lmer(Percent_Change ~ poly(Low_Tide_Mean_Salinity_scaled,2) + poly(Low_Tide_Mean_Temperature_scaled,2) + (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+
+summary(multivariate_PRU_growth)
+car::Anova(multivariate_PRU_growth)
+```
+
+
+#### Pac symb
 
 ```{r model all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
-                            stringsAsFactors = FALSE)
-
-plotlist <- list()
-
-parameters <- unique(PAC_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
-  
-  # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc and p-value
-    AICc <- AICc(model)
-  
-  # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["value", "Estimate"]
-  
-if (p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
-  }
-  }
-model_results %>% filter(p.value < 0.05)
-#grid.arrange(grobs = plotlist, ncol = 2)
-
-#model_results$Species <- "Pocillopora acuta"
-#model_results$type <- "linear"
-PAC_symb_model_results <- model_results
-```
-
-#### Pac symb polynomial
-
-```{r PAC polynomialmodel all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
                             stringsAsFactors = FALSE)
 plotlist <- list()
 
@@ -849,181 +859,247 @@ parameters <- unique(PAC_model_scaled_data_long$Parameter)
 for (parameter in parameters) {
   # Create a subset of data for the current parameter
   subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
-
-  # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc and p-value
-  AICc <- AICc(model)
-  
-  # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  
-  if (p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
-  }
-  }
-
-model_results %>% filter(p.value < 0.05)
-#grid.arrange(grobs = plotlist, ncol = 1)
-
-#model_results$Species <- "Pocillopora acuta"
-#model_results$type <- "polynomial"
-
-PAC_symb_model_results <- rbind(model_results, PAC_symb_model_results)
-```
-
-#### Pac symb results
-
-```{r}
-PAC_symb_model_results
-```
-
-
-
-#### Pru symb linear
-
-```{r PRU symbionts}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
-
-parameters <- unique(PRU_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
   
   # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + Cage_Uncaged, data = subset_data)
+  linear_model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  polynomial_model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
   
-  # Get AICc and p-value
-    AICc <- AICc(model)
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
   
   # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["value", "Estimate"]
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
   
- if (p.value < 0.05) {
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+  
+  if (linear_p.value < 0.05) {
     # Add results to the dataframe
     model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     type = "linear"))
     
     # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
   }
-  }
-model_results %>% filter(p.value < 0.05)
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
+
 grid.arrange(grobs = plotlist, ncol = 2)
 
+model_results$Species <- "Pocillopora acuta"
 
-model_results$Species <- "Porites rus"
-model_results$type <- "linear"
-
-PRU_symb_model_results <- model_results
+PAC_symb_model_results <- model_results
+PAC_symb_model_results[order(PAC_symb_model_results$AICc), c(8, 1, 7, 2:6)]
 ```
 
-#### Pru symb polynomial
 
-```{r PRU symbionts polynomial, message=FALSE}
+#### Pru symb 
+
+```{r PRU symbionts by cm}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
                             stringsAsFactors = FALSE)
-
 plotlist <- list()
 
 parameters <- unique(PRU_model_scaled_data_long$Parameter)
 
 for (parameter in parameters) {
   # Create a subset of data for the current parameter
-  subset_data <- subset(PRU_model_scaled_data_long, Parameter == parameter)
+  subset_data <-PRU_model_scaled_data_long %>% 
+    filter(Parameter == parameter) %>% 
+    filter(!(Pin_Number == "14" & Cage_Uncaged == "C"))
   
   # Fit the mixed-effects model
-  model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  linear_model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  polynomial_model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
   
-  # Get AICc and p-value
-  AICc <- AICc(model)
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
   
   # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["poly(value, 2)1", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
   
-  if (p.value < 0.05) {
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+  
+  if (linear_p.value < 0.05) {
     # Add results to the dataframe
     model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     type = "linear"))
     
     # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
   }
-  }
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
 
-model_results %>% filter(p.value < 0.05)
-grid.arrange(grobs = plotlist, ncol = 1)
+grid.arrange(grobs = plotlist, ncol = 2)
 
 model_results$Species <- "Porites rus"
-model_results$type <- "polynomial"
 
-PRU_symb_model_results <- rbind(model_results, PRU_symb_model_results)
+PRU_symb_model_results <- model_results
+PRU_symb_model_results[order(PRU_symb_model_results$AICc), c(8, 1, 7, 2:6)]
 ```
 
-#### Pru symb results
+```{r, message=FALSE}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
+                            stringsAsFactors = FALSE)
+plotlist <- list()
 
-```{r}
-PRU_symb_model_results
-```
+parameters <- unique(PRU_model_scaled_data_long$Parameter)
 
-```{r multivariate dredge}
-PRU_symb_big_model <- lmer(log10(FSC.Events_per_cm_2) ~ 
-                       Maximum_Phosphate_umolL_scaled + 
-                       Low_Tide_Mean_Phosphate_umolL_scaled +
-                       (1 | Genotype)+ (1|Cage_Uncaged), 
-                                 data = PRU_model_data, 
-                                 na.action = na.pass)
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <-PRU_model_scaled_data_long %>% 
+    filter(Parameter == parameter) %>% 
+    filter(!(Pin_Number == "14" & Cage_Uncaged == "C"))
+  
+  # Fit the mixed-effects model
+  linear_model <- lmer(log10(FSC.Events_per_g_dry_weight) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  polynomial_model <- lmer(log10(FSC.Events_per_g_dry_weight) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
+  
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
+  
+  # Get p-value from summary
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
+  
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+  
+  if (linear_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     type = "linear"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
+  }
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
 
-PRU_symb_big_model_dredge <- dredge(PRU_symb_big_model, trace = 2)
-#model.sel(PAC_cv_low_growth_model_dredge)
-PRU_symb.avg = model.avg(PRU_symb_big_model_dredge, delta < 2)
-summary(PRU_symb.avg)
-PRU_symb.avg$sw
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Porites rus"
+
+PRU_symb_model_results <- model_results
+PRU_symb_model_results[order(PRU_symb_model_results$AICc), c(8, 1, 7, 2:6)]
 ```
 
 
@@ -1034,6 +1110,7 @@ SI_join %>%
   filter(!Placement_Code == "T0") %>% 
   ggplot(aes(x = δ15N_host, y = δ15N_symb)) +
   geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   geom_smooth(method = "lm") +
 #  geom_text(aes(label = Pin_Number)) +
   facet_wrap(~Species, scales = "free_x")
@@ -1045,9 +1122,10 @@ SI_join %>%
   filter(!Placement_Code == "T0") %>% 
   ggplot(aes(x = δ13C_host, y = δ13C_symb)) +
   geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   geom_smooth(method = "lm") +
 #  geom_text(aes(label = Pin_Number)) +
-  facet_wrap(~Species, scales = "free_x")
+  facet_wrap(~Species, scales = "free")
 ```
 
 ### Exploratory plots:
@@ -1057,13 +1135,14 @@ If you could plot their 15N and 13C host and symbiont values on 2 different plot
 CV <- names(explanatory_all_wide)[grepl("CV_", names(explanatory_all_wide), names(explanatory_all_wide))]
 mean_low <- names(explanatory_all_wide)[grepl("Low_Tide_Mean_", names(explanatory_all_wide), names(explanatory_all_wide))]
 
-filter_values <- c("Minimum_Salinity",
-                   "Minimum_Temperature",
-                   "Maximum_TA",
-                   "Minimum_pH",
-                   "Maximum_NN_umolL",
+filter_values <- c("Maximum_NN_umolL",
                    "Maximum_Phosphate_umolL",
-                   "Maximum_NNP_umolL")
+                   "Maximum_NNP_umolL",
+                   "Low_Tide_Mean_Phosphate_umolL",
+                   "Low_Tide_Mean_NN_umolL",
+                   "Low_Tide_Mean_pH",
+                   "Low_Tide_Mean_TA",
+                   "Low_Tide_Mean_Salinity")
 
 SI_data1 <- left_join(SI, explanatory_all,by = join_by(CowTagID))
 SI_data_wide <- left_join(SI, explanatory_all_wide,by = join_by(CowTagID))
@@ -1110,7 +1189,7 @@ for (parameter in nitrate_parameters) {
     facet_wrap(~ HS, scales = "free") +
     ggtitle(paste(sp)) +  #Add species name to the plot title
     theme_bw()+
-    ylim(-1.1, NA)
+    ylim(-1.1, NA) 
 }
 grid.arrange(grobs = plot_list, ncol = 2)
 ```
@@ -1142,6 +1221,7 @@ Rus_data <- SI_data_wide %>%
 model <- lmer(δ15N ~ Low_Tide_Mean_NN_umolL + (1|Genotype), data = Rus_data)
 car::Anova(model)
 ```
+
 ### Exploring plots of symbionts and growth vs. isotope values
 ```{r}
 SI_data_wide <- left_join(SI_data_wide, FCM[,c("Placement_Code", "FSC.Events_per_cm_2")])
@@ -1195,31 +1275,31 @@ rus_SIvssymb_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, leg
 
 Ok, we expect Δ13C(h-s) to increase with increasing symbiont populations. 
 
-#### Just running a model to check that bc the last plot looks very significant:
+#### Just running a model to see bc the last plot looks potentially significant:
 
 ```{r rus symbiont vs isotope C}
 Rus_data <- SI_data_wide %>%
-  filter(Species == "Porites rus")
+  filter(Species == "Porites rus" & HS == "host")
+model <- lmer(δ13C ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = Rus_data)
+car::Anova(model)
 model <- lmer(Δ13C ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = Rus_data)
 car::Anova(model)
 ```
-Ok so the host is going to have more 13C than the symbiont at higher symbiont populations in Porties rus corals. 
+Ok so the host is going to have more 13C than the symbiont at higher symbiont populations in Porties rus corals, but we're not quite significant to the point where it is almost painful. 
 
 Increased contributions of heterotrophically-derived carbon results in more pronounced differences between δ13C levels in host and Symbiodiniaceae (∆13C = δ13Chost - δ13Csymbiont) (Muscatine et al., 1989; M. E. A. Santos et al., 2021).
 
 “During periods of high coral photosynthesis the internal carbon pool becomes enriched in 13C (higher δ13C values) as dissolved inorganic carbon enriched in 12C is preferentially fixed” [Wall et al., 2020, p. 954]. 
 
 ```{r Rus Δ13C ~ Maximum_Phosphate_umolL}
-model <- lmer(Δ13C ~ Maximum_Phosphate_umolL+ (1|Genotype), data = Rus_data)
+Rus_data <- SI_data_wide %>%
+  filter(Species == "Porites rus" & HS == "host")
+model <- lmer(Δ13C ~ Maximum_Phosphate_umolL + (1|Genotype), data = Rus_data)
 car::Anova(model)
 ```
 ```{r Rus Δ13C ~ Low_Tide_Mean_Phosphate_umolL}
-model <- lmer(Δ13C ~ Low_Tide_Mean_Phosphate_umolL+ (1|Genotype), data = Rus_data)
+model <- lmer(Δ13C ~ Low_Tide_Mean_Phosphate_umolL + (1|Genotype), data = Rus_data)
 car::Anova(model)
-effect_plot <- ggpredict(model, terms = "Low_Tide_Mean_Phosphate_umolL[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-ggplot_obj <- plot(effect_plot)
 ```
 
 
@@ -1388,8 +1468,13 @@ acuta_pc_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 
 ```{r PAC_Δ15N_model_results}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
+                            Marginal_R2 = numeric(),
+                            Conditional_R2 = numeric(),
                             stringsAsFactors = FALSE)
 
 plotlist <- list()
@@ -1402,54 +1487,103 @@ for (parameter in parameters) {
   subset_data <- subset(subset_data, Species == "Pocillopora acuta")
   
   # Fit the mixed-effects model
-  model <- lmer(Δ15N ~ value + (1|Genotype), data = subset_data)
+  linear_model <- lmer(Δ15N ~ value + (1|Genotype), data = subset_data)
+  polynomial_model <- lmer(Δ15N ~ poly(value,2) + (1|Genotype), data = subset_data)
   
-  # Get AICc and p-value
-    AICc <- AICc(model)
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
   
   # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["value", "Estimate"]
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
   
-  # Calculate marginal and conditional R-squared values
-    rsq <- as.numeric(r.squaredGLMM(model))
-    marginal_R2 <- rsq[1]
-    conditional_R2 <- rsq[2]
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
   
-  if (p.value < 0.05) {
+  #Get R2
+    rsq <- as.numeric(r.squaredGLMM(linear_model))
+    linear_marginal_R2 <- rsq[1]
+    linear_conditional_R2 <- rsq[2]
+  
+  if (linear_p.value < 0.05) {
     # Add results to the dataframe
-    model_results <- rbind(data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate,
-                                                     Marginal_R2 = marginal_R2,
-                                                     Conditional_R2 = conditional_R2))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     Marginal_R2 = linear_marginal_R2,
+                                                     Conditional_R2 = linear_conditional_R2,
+                                                     type = "linear"))
     
     # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
   }
-  }
-print(model_results)
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     Marginal_R2 = "NA",
+                                                     Conditional_R2 = "NA",
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
+
 grid.arrange(grobs = plotlist, ncol = 2)
 
 model_results$Species <- "Pocillopora acuta"
-model_results$type <- "linear"
 
 PAC_Δ15N_model_results <- model_results
+PAC_Δ15N_model_results[order(PAC_Δ15N_model_results$AICc), c(10, 1, 3, 2, 5:9)]
 ```
+
+```{r}
+SI_data %>% 
+  filter(Species == "Pocillopora acuta") %>% 
+  filter(Parameter == "Maximum_Phosphate_umolL") %>% 
+  ggplot(aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = "Maximum_Phosphate_umolL") +
+      theme_bw()
+```
+
 
 ```{r PAC_Δ13C_model_results}
 model_results <- data.frame(Parameter = character(),
                             AICc = numeric(),
-                            p.value = numeric(),
-                            Estimate = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
+                            Marginal_R2 = numeric(),
+                            Conditional_R2 = numeric(),
                             stringsAsFactors = FALSE)
 
 plotlist <- list()
@@ -1462,47 +1596,320 @@ for (parameter in parameters) {
   subset_data <- subset(subset_data, Species == "Pocillopora acuta")
   
   # Fit the mixed-effects model
-  model <- lmer(Δ13C ~ value + (1|Genotype), data = subset_data)
+  linear_model <- lmer(Δ13C ~ value + (1|Genotype), data = subset_data)
+  polynomial_model <- lmer(Δ13C ~ poly(value,2) + (1|Genotype), data = subset_data)
   
-  # Get AICc and p-value
-    AICc <- AICc(model)
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
   
   # Get p-value from summary
-  model_summary <- summary(model)
-  p.value <- model_summary$coefficients["value", "Pr(>|t|)"]
-  Estimate <- model_summary$coefficients["value", "Estimate"]
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
   
-  # Calculate marginal and conditional R-squared values
-    rsq <- as.numeric(r.squaredGLMM(model))
-    marginal_R2 <- rsq[1]
-    conditional_R2 <- rsq[2]
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
   
-  if (p.value < 0.05) {
+  #Get R2
+    rsq <- as.numeric(r.squaredGLMM(linear_model))
+    linear_marginal_R2 <- rsq[1]
+    linear_conditional_R2 <- rsq[2]
+  
+  if (linear_p.value < 0.05) {
     # Add results to the dataframe
-    model_results <- rbind(data.frame(Parameter = parameter,
-                                                     AICc = AICc,
-                                                     p.value = p.value,
-                                                     Estimate = Estimate,
-                                                     Marginal_R2 = marginal_R2,
-                                                     Conditional_R2 = conditional_R2))
-    
-    # Create an effects plot using ggpredict
-    effect_plot <- ggpredict(model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-    ggplot_obj <- plot(effect_plot)
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     Marginal_R2 = linear_marginal_R2,
+                                                     Conditional_R2 = linear_conditional_R2,
+                                                     type = "linear"))
     
     # Add the ggplot object to the plotlist
-    plotlist[[parameter]] <- ggplot_obj + ggtitle(parameter)
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Δ13C)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
   }
-  }
-print(model_results)
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     Marginal_R2 = "NA",
+                                                     Conditional_R2 = "NA",
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Δ13C)) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
+
 grid.arrange(grobs = plotlist, ncol = 2)
 
 model_results$Species <- "Pocillopora acuta"
-model_results$type <- "linear"
 
 PAC_Δ13C_model_results <- model_results
+PAC_Δ13C_model_results[order(PAC_Δ13C_model_results$AICc), c(10, 1, 9, 3, 2, 5:8)]
+```
+
+```{r}
+plot1 <- SI_data %>% 
+  filter(Species == "Pocillopora acuta") %>% 
+  filter(Parameter == "Maximum_Phosphate_umolL") %>% 
+  ggplot(aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = "Maximum_Phosphate_umolL", title = "Pocillopora acuta") +
+      theme_bw()
+
+plot2 <- SI_data %>% 
+  filter(Species == "Pocillopora acuta") %>% 
+  filter(Parameter == "Maximum_NN_umolL") %>% 
+  ggplot(aes(x = value, y = Δ13C)) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = "y~poly(x,2)")+
+      labs(x = "Maximum_NN_umolL", title = "Pocillopora acuta") +
+      theme_bw()
+
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+
+
+```{r PRU_Δ15N_model_results}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
+                            Marginal_R2 = numeric(),
+                            Conditional_R2 = numeric(),
+                            stringsAsFactors = FALSE)
+
+plotlist <- list()
+
+parameters <- unique(SI_data$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(SI_data, Parameter == parameter)
+  subset_data <- subset(subset_data, Species == "Porites rus")
+  
+  # Fit the mixed-effects model
+  linear_model <- lmer(Δ15N ~ value + (1|Genotype), data = subset_data)
+  polynomial_model <- lmer(Δ15N ~ poly(value,2) + (1|Genotype), data = subset_data)
+  
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
+  
+  # Get p-value from summary
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
+  
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+  
+  #Get R2
+    rsq <- as.numeric(r.squaredGLMM(linear_model))
+    linear_marginal_R2 <- rsq[1]
+    linear_conditional_R2 <- rsq[2]
+  
+  if (linear_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     Marginal_R2 = linear_marginal_R2,
+                                                     Conditional_R2 = linear_conditional_R2,
+                                                     type = "linear"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
+  }
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     Marginal_R2 = "NA",
+                                                     Conditional_R2 = "NA",
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
+
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Porites rus"
+
+PRU_Δ15N_model_results <- model_results
+PRU_Δ15N_model_results[order(PRU_Δ15N_model_results$AICc), c(10, 1, 3, 2, 5:9)]
+```
+
+
+```{r PRU_Δ13C_model_results}
+model_results <- data.frame(Parameter = character(),
+                            AICc = numeric(),
+                            p.value1 = numeric(),
+                            p.value2 = numeric(),
+                            Estimate1 = numeric(),
+                            Estimate2 = numeric(),
+                            type = character(),
+                            Marginal_R2 = numeric(),
+                            Conditional_R2 = numeric(),
+                            stringsAsFactors = FALSE)
+
+plotlist <- list()
+
+parameters <- unique(SI_data$Parameter)
+
+for (parameter in parameters) {
+  # Create a subset of data for the current parameter
+  subset_data <- subset(SI_data, Parameter == parameter)
+  subset_data <- subset(subset_data, Species == "Porites rus")
+  
+  # Fit the mixed-effects model
+  linear_model <- lmer(Δ13C ~ value + (1|Genotype), data = subset_data)
+  polynomial_model <- lmer(Δ13C ~ poly(value,2) + (1|Genotype), data = subset_data)
+  
+  # Get AICc
+  linear_AICc <- AICc(linear_model)
+  polynomial_AICc <- AICc(polynomial_model)
+  
+  # Get p-value from summary
+  linear_model_summary <- summary(linear_model)
+  anova_linear <- car::Anova(linear_model)
+  linear_p.value <- anova_linear$`Pr(>Chisq)`
+  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+  polynomial_model_summary <- summary(polynomial_model)
+  anova_poly <- car::Anova(polynomial_model)
+  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
+  
+  # Get Estimate
+  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+  
+  #Get R2
+    rsq <- as.numeric(r.squaredGLMM(linear_model))
+    linear_marginal_R2 <- rsq[1]
+    linear_conditional_R2 <- rsq[2]
+  
+  if (linear_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = linear_AICc,
+                                                     p.value1 = linear_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = linear_Estimate,
+                                                     Estimate2 = "NA",
+                                                     Marginal_R2 = linear_marginal_R2,
+                                                     Conditional_R2 = linear_conditional_R2,
+                                                     type = "linear"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm") +
+      labs(x = parameter) +
+      theme_bw()
+  }
+  
+    if (polynomial_p.value < 0.05) {
+    # Add results to the dataframe
+    model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                     AICc = polynomial_AICc,
+                                                     p.value1 = polynomial_p.value,
+                                                     p.value2 = "NA",
+                                                     Estimate1 = polynomial_Estimate1,
+                                                     Estimate2 = polynomial_Estimate2,
+                                                     Marginal_R2 = "NA",
+                                                     Conditional_R2 = "NA",
+                                                     type = "polynomial"))
+    
+    # Add the ggplot object to the plotlist
+    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+      labs(x = parameter) +
+      theme_bw()
+    }
+}
+
+grid.arrange(grobs = plotlist, ncol = 2)
+
+model_results$Species <- "Porites rus"
+
+PRU_Δ13C_model_results <- model_results
+PRU_Δ13C_model_results[order(PRU_Δ13C_model_results$AICc), c(10, 1, 3, 2, 5:9)]
+```
+
+```{r}
+plot1 <- SI_data %>% 
+  filter(Species == "Porites rus") %>% 
+  filter(Parameter == "Low_Tide_Mean_NN_umolL") %>% 
+  ggplot(aes(x = value, y = Δ15N)) +
+      geom_point() +
+      geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+      labs(x = "Low_Tide_Mean_NN_umolL", title = "Porites rus") +
+      theme_bw()
+
+plot2 <- SI_data %>% 
+  filter(Species == "Porites rus") %>% 
+  filter(Parameter == "Low_Tide_Mean_Phosphate_umolL") %>% 
+  ggplot(aes(x = value, y = Δ13C)) +
+      geom_point() +
+      geom_smooth(method = "lm")+
+      labs(x = "Low_Tide_Mean_Phosphate_umolL", title = "Porites rus") +
+      theme_bw()
+
+grid.arrange(plot1, plot2, ncol = 2)
 ```
 
 
@@ -1539,5 +1946,116 @@ plot6 <- create_SI_plot(SI_data_wide, "Porites rus", "host", "Percent_Change", "
 legend <- gtable::gtable_filter(ggplot_gtable(ggplot_build(plot1 + theme(legend.position = "top"))), "guide-box")
 
 rus_SIvsgrowth_plots <- grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, legend, ncol = 3)
+```
+
+
+#### PC of response?
+```{r PRU Response PC}
+PRU_response_data$logsymb <- log10(PRU_response_data$FSC.Events_per_cm_2)
+pca.data <-na.omit(PRU_response_data[,c("Pin_Number", "Percent_Change", "logsymb", "δ15N_host","δ15N_symb", "δ13C_host", "δ13C_symb")])
+pca = princomp(pca.data[,c(2:7)], cor=TRUE)
+summary(pca)
+loadings(pca)
+pca.data$pc1 = pca$scores[,1] #what's this data's score on pc1 axis
+pca.data$pc2 = pca$scores[,2] #what's this data's score on pc2 axis
+```
+
+```{r}
+biplot(pca)
+```
+
+```{r}
+#ggplot(pca.data, aes(x=pc1, y=pc2))+
+#  geom_point()
+```
+
+```{r}
+pcoa = capscale(pca.data ~ 1, dist = "euclidean")
+pcoa
+```
+The total inertia (0.889) is the summed squared Bray distance, which is the total variation in the
+data. I don't fully understand the 'imaginary' vs. 'unconstrained' variance, but I know if you do this:
+```{r}
+summary <- summary(pcoa)
+summary$cont
+```
+You can see that the first axis explains 87% of the variation... which is very very high. The second explains an additional 12% 
+
+```{r}
+par(mfrow = c(1,2))
+plot(pcoa, type = 'n')
+text(pcoa, "species", col = 'blue', cex = 1)
+plot(pcoa, type = 'n')
+#text(pcoa, "location", col = 'blue', cex = 0.5)
+points(pcoa, col = 'black', bg = 'grey', pch = 21)
+```
+
+
+```{r}
+proc <- procrustes(pca, pcoa)
+plot(proc, main = "sample ordination")
+```
+
+
+```{r PAC Response PC}
+PAC_response_data$log10symb <- log10(PAC_response_data$FSC.Events_per_cm_2)
+pca.data <-na.omit(PAC_response_data[,c("Pin_Number", "Percent_Change", "log10symb", "δ15N_host","δ15N_symb", "δ13C_host", "δ13C_symb")])
+pca = princomp(pca.data[,c("Percent_Change", "log10symb", "δ15N_host","δ15N_symb", "δ13C_host", "δ13C_symb")], cor=TRUE)
+summary(pca)
+loadings(pca)
+```
+
+```{r}
+biplot(pca)
+```
+```{r PAC PCoA}
+pcoa = capscale(pca.data ~ 1, dist = "euclidean")
+pcoa
+```
+
+```{r}
+par(mfrow = c(1,2))
+plot(pcoa, type = 'n')
+text(pcoa, "species", col = 'blue', cex = 1)
+plot(pcoa, type = 'n')
+#text(pcoa, "location", col = 'blue', cex = 0.5)
+points(pcoa, col = 'black', bg = 'grey', pch = 21)
+```
+
+```{r}
+unique(explanatory_all_wide[,c(mean_low_columns)])
+colname <- unique(mean_low_columns)
+loop <- ncol(explanatory_all_wide)
+
+#for (i in 1:length(mean_low_columns)) {
+#  hist(explanatory_all_wide[,c(i)])
+#}
+
+dist_explan_df <-explanatory_all_wide[,c("CowTagID", "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Salinity", "Low_Tide_Mean_Temperature", "Low_Tide_Mean_TA", "Low_Tide_Mean_pH", "Low_Tide_Mean_Silicate_umolL")]
+
+dist_explan_df <- dist_explan_df %>% 
+  separate(col = CowTagID, sep = "V", into = c(NA, "Pin_Number")) %>% 
+  filter(!Pin_Number == "14")
+
+par(mfrow = c(2,5))
+hist(explanatory_all_wide$Low_Tide_Mean_NN_umolL)
+hist(explanatory_all_wide$Low_Tide_Mean_Phosphate_umolL)
+hist(explanatory_all_wide$Low_Tide_Mean_Salinity)
+hist(explanatory_all_wide$Low_Tide_Mean_Temperature)
+hist(explanatory_all_wide$Low_Tide_Mean_TA)
+hist(explanatory_all_wide$Low_Tide_Mean_pH)
+hist(explanatory_all_wide$Low_Tide_Mean_Silicate_umolL)
+```
+
+
+
+```{r}
+dist.explanatory <- dist(scale(x = dist_explan_df[,c(2:8)], scale = T, center = T), method = "euclidean")
+dist.response <- dist(scale(x = pca.data[,c(2:7)], scale = T, center = T), method = "euclidean")
+```
+
+```{r}
+response_by_explan <- mantel(dist.response, dist.explanatory, method = "spearman", permutations = 900, na.rm = TRUE)
+response_by_explan
 ```
 

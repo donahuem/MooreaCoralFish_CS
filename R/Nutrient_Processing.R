@@ -132,6 +132,11 @@ sd_data <- ReducedChemData %>%
   summarise_at(vars(Salinity:Ammonia_umolL), .funs = sd, na.rm = T) %>% 
   rename_with(~ paste0("sd_", .), Salinity:Ammonia_umolL)
 
+var_data <- ReducedChemData %>%
+  group_by(Location, CowTagID) %>% 
+  summarise_at(vars(Salinity:Ammonia_umolL), .funs = var, na.rm = T) %>% 
+  rename_with(~ paste0("var_", .), Salinity:Ammonia_umolL)
+
 cv_chem_data <- left_join(mean_data, sd_data, by = join_by(Location, CowTagID))
 
 cv_chem_data <- cv_chem_data %>%
@@ -147,10 +152,10 @@ cv_chem_data <- cv_chem_data %>%
   dplyr::select(-starts_with("sd"))
 
 min_max_data <- left_join(min_data, max_data, by = join_by(Location, CowTagID))
-
 Summarized_chem_data <- left_join(min_max_data, cv_chem_data, by = join_by(Location, CowTagID))
+Summarized_chem_data <- left_join(Summarized_chem_data, sd_data, by = join_by(Location, CowTagID))
 Summarized_chem_data <- left_join(Summarized_chem_data, mean_low_data, by = join_by(Location, CowTagID))
-Summarized_chem_data<- Summarized_chem_data[,c(2:46)]
+Summarized_chem_data<- Summarized_chem_data[,c(2:55)]
 
 Summarized_chem_data$Time <- "All"
 
@@ -184,6 +189,11 @@ sd_data_wet <- WetChemData %>%
   summarise_at(vars(Salinity:Ammonia_umolL), .funs = sd, na.rm = T) %>% 
   rename_with(~ paste0("sd_", .), Salinity:Ammonia_umolL)
 
+var_data_wet <- WetChemData %>%
+  group_by(Location, CowTagID) %>% 
+  summarise_at(vars(Salinity:Ammonia_umolL), .funs = var, na.rm = T) %>% 
+  rename_with(~ paste0("var_", .), Salinity:Ammonia_umolL)
+
 cv_chem_data_wet <- left_join(mean_data_wet, sd_data_wet, by = join_by(Location, CowTagID))
 
 cv_chem_data_wet <- cv_chem_data_wet %>%
@@ -209,13 +219,13 @@ Summarized_chem_data_wet$Time <- "Wet"
 #write_csv(Summarized_chem_data, here("data","All_Nutrients_Processed.csv"))
 #write_csv(Summarized_chem_data_wet, here("data","Wet_Nutrients_Processed.csv"))
 
-nutrients2 <- left_join(mean_low_data, cv_chem_data, by = join_by(Location, CowTagID)) %>% 
-  dplyr::select(-starts_with("Mean_"))
-nutrients2$Time <- "All"
+#nutrients2 <- left_join(mean_low_data, cv_chem_data, by = join_by(Location, CowTagID)) %>% 
+#  dplyr::select(-starts_with("Mean_"))
+#nutrients2$Time <- "All"
 
-nutrients2_wet <- left_join(mean_low_data_wet, cv_chem_data_wet, by = join_by(Location, CowTagID)) %>% 
-  dplyr::select(-starts_with("Mean_"))
-nutrients2_wet$Time <- "Wet"
+#nutrients2_wet <- left_join(mean_low_data_wet, cv_chem_data_wet, by = join_by(Location, CowTagID)) %>% 
+#  dplyr::select(-starts_with("Mean_"))
+#nutrients2_wet$Time <- "Wet"
 
 #write_csv(Summarized_chem_data, here("data","All_Nutrients_Processed_CV_Low.csv"))
 #write_csv(Summarized_chem_data_wet, here("data","Wet_Nutrients_Processed_CV_Low.csv"))

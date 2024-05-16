@@ -168,7 +168,7 @@ ggplot(nut_no_seep, aes(x = lon, y = lat, color = cvpc1)) +
 
 ```{r mean low PCA}
 pca.data <- na.omit(nut_no_seep[, c(pulse_columns)])
-pca = princomp(pca.data, cor=TRUE)
+pca = princomp(pca.data[,c(1:4)], cor=TRUE)
 summary(pca)
 ```
 
@@ -207,5 +207,13 @@ explanatory2 <- pivot_longer(
 names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
 #write.csv(explanatory2,"Explanatory_variables.csv")
 write.csv(pulse_data,"PCA_Pulse_variables_wide.csv")
+```
+
+```{r}
+ggplot(nut_no_seep, aes(x = lon, y = lat, color = Low_Tide_Mean_Silicate_umolL)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
 ```
 
