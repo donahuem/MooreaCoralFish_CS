@@ -375,19 +375,6 @@ for (sp in species) {
 
 
 ```{r growth change by symbionts}
-response_data %>% 
-  filter(Cage_Uncaged == "C") %>% 
-  ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
-  geom_point() +
-  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
-  ggtitle("Change in BW by Number of Symbionts") +
-  geom_text(aes(label = Pin_Number)) +
-  facet_wrap(~ Species, scales = "free") -> growth_v_symb_plot
-
-growth_v_symb_plot
-#ggsave("output/caged_growth_v_symb.png", width = 9, height = 6, plot = growth_v_symb_plot)
-
-
 symb_growth_model <- response_data %>%
   filter(Cage_Uncaged == "C") %>%
   group_by(Species) %>% 
@@ -401,6 +388,25 @@ anova_tables <- lapply(model_objects, function(model) {
 anova_tables
 #car::Anova(symb_growth_model$model[[1]]) #less code with small number of models
 car::Anova(symb_growth_model$model[[2]])
+
+# Add a new column to specify which Species should have the smoothing line
+response_data <- response_data %>%
+  mutate(smooth_line = ifelse(Species == "Porites rus", TRUE, FALSE))
+
+# Filter and plot
+response_data %>% 
+  filter(Cage_Uncaged == "C") %>% 
+  ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2))) +
+  geom_point() +
+  geom_smooth(data = . %>% filter(smooth_line), method = "lm", formula = y ~ poly(x, 2)) +
+  ggtitle("Change in BW by Number of Symbionts") +
+#  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~ Species, scales = "free") -> growth_v_symb_plot
+
+growth_v_symb_plot
+
+#ggsave("output/caged_growth_v_symb.png", width = 9, height = 6, plot = growth_v_symb_plot)
+#########
 ```
 
 OK, I don't want this relationship driven by 14 for rus, which I know had a good B coral and a diseased C coral
@@ -447,7 +453,7 @@ BW_long <- response_data %>%
 
 growth_v_sp_plot <- ggplot(data = BW_long, aes(x = `Pocillopora acuta`, y = `Porites rus`))+
   geom_point() +
-  labs(title = "% ∆ BW between species by Pin Number")
+  labs(title = "% ∆ BW between species")
 
 #  geom_smooth(method = "lm") +
   growth_v_sp_plot
@@ -505,7 +511,7 @@ Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as mu
 FCM_violin <- ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
   geom_violin() +
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
-  geom_text(aes(label = Pin_Number)) +
+#  geom_text(aes(label = Pin_Number)) +
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
   facet_wrap(~Species)+
   labs(title = expression(paste("Symbionts per ", cm^2, " by caging treatment")))+
@@ -552,11 +558,6 @@ grid.arrange(plot1, plot2, ncol =2)
 ```
 
 
-### Independence
-```{r independence}
-
-```
-
 ### Data Analysis
 ```{r}
 PAC_model_scaled_data_long <- pivot_longer(
@@ -594,118 +595,188 @@ summary(anova_PAC)
 #caging did not effect symbionts in P. acuta
 #this I have a bit of a hard time believing 
 ```
+## LMER FUNCTIONS:
+
+```{r analyze function}
+analyze_dsr <- function(data, species, response_variable) {
+  model_results <- data.frame(Parameter = character(),
+                              AICc = numeric(),
+                              p.value1 = numeric(),
+                              p.value2 = numeric(),
+                              Estimate1 = numeric(),
+                              Estimate2 = numeric(),
+                              type = character(),
+                              stringsAsFactors = FALSE)
+  plotlist <- list()
+  
+  parameters <- unique(data$Parameter)
+  
+  for (parameter in parameters) {
+    # Create a subset of data for the current parameter
+    subset_data <- data %>%
+      filter(Parameter == parameter)
+    
+    # Fit the mixed-effects model
+    linear_model <- lmer(as.formula(paste(response_variable, "~ value + (1|Genotype) + (1|Cage_Uncaged)")), data = subset_data)
+    polynomial_model <- lmer(as.formula(paste(response_variable, "~ poly(value, 2) + (1|Genotype) + (1|Cage_Uncaged)")), data = subset_data)
+    
+    # Get AICc
+    linear_AICc <- AICc(linear_model)
+    polynomial_AICc <- AICc(polynomial_model)
+    
+    # Get p-value from summary
+    linear_model_summary <- summary(linear_model)
+    anova_linear <- car::Anova(linear_model)
+    linear_p.value <- anova_linear$`Pr(>Chisq)`
+    linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+    
+    polynomial_model_summary <- summary(polynomial_model)
+    anova_poly <- car::Anova(polynomial_model)
+    polynomial_p.value <- anova_poly$`Pr(>Chisq)`
+    
+    # Get Estimate
+    linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+    polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+    polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+    
+    if (linear_p.value < 0.05) {
+      # Add results to the dataframe
+      model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                       AICc = linear_AICc,
+                                                       p.value1 = linear_p.value,
+                                                       p.value2 = NA,
+                                                       Estimate1 = linear_Estimate,
+                                                       Estimate2 = NA,
+                                                       type = "linear"))
+      
+      # Add the ggplot object to the plotlist
+      plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
+        geom_point() +
+        geom_smooth(method = "lm") +
+        labs(x = parameter) +
+        theme_bw()
+    }
+    
+    if (polynomial_p.value < 0.05) {
+      # Add results to the dataframe
+      model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                       AICc = polynomial_AICc,
+                                                       p.value1 = polynomial_p.value,
+                                                       p.value2 = NA,
+                                                       Estimate1 = polynomial_Estimate1,
+                                                       Estimate2 = polynomial_Estimate2,
+                                                       type = "polynomial"))
+      
+      # Add the ggplot object to the plotlist
+      plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
+        geom_point() +
+        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+        labs(x = parameter) +
+        theme_bw()
+    }
+  }
+  
+  grid.arrange(grobs = plotlist, ncol = 2)
+  
+  return(model_results)
+}
+# Example usage:
+# result <- analyze_dsr(SI_data, "Porites rus", "Δ15N")
+```
+
+```{r analyze function no re of cage}
+analyze_dsr_caged <- function(data, species, response_variable) {
+  model_results <- data.frame(Parameter = character(),
+                              AICc = numeric(),
+                              p.value1 = numeric(),
+                              p.value2 = numeric(),
+                              Estimate1 = numeric(),
+                              Estimate2 = numeric(),
+                              type = character(),
+                              stringsAsFactors = FALSE)
+  plotlist <- list()
+  
+  parameters <- unique(data$Parameter)
+  
+  for (parameter in parameters) {
+    # Create a subset of data for the current parameter
+    subset_data <- data %>% 
+      filter(Parameter == parameter)
+    
+    # Fit the mixed-effects model
+    linear_model <- lmer(as.formula(paste(response_variable, "~ value + (1|Genotype)")), data = subset_data)
+    polynomial_model <- lmer(as.formula(paste(response_variable, "~ poly(value, 2) + (1|Genotype)")), data = subset_data)
+    
+    # Get AICc
+    linear_AICc <- AICc(linear_model)
+    polynomial_AICc <- AICc(polynomial_model)
+    
+    # Get p-value from summary
+    linear_model_summary <- summary(linear_model)
+    anova_linear <- car::Anova(linear_model)
+    linear_p.value <- anova_linear$`Pr(>Chisq)`
+    linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
+    
+    polynomial_model_summary <- summary(polynomial_model)
+    anova_poly <- car::Anova(polynomial_model)
+    polynomial_p.value <- anova_poly$`Pr(>Chisq)`
+    
+    # Get Estimate
+    linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
+    polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
+    polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
+    
+    if (linear_p.value < 0.05) {
+      # Add results to the dataframe
+      model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                       AICc = linear_AICc,
+                                                       p.value1 = linear_p.value,
+                                                       p.value2 = NA,
+                                                       Estimate1 = linear_Estimate,
+                                                       Estimate2 = NA,
+                                                       type = "linear"))
+      
+      # Add the ggplot object to the plotlist
+      plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
+        geom_point() +
+        geom_smooth(method = "lm") +
+        labs(x = parameter) +
+        theme_bw()
+    }
+    
+    if (polynomial_p.value < 0.05) {
+      # Add results to the dataframe
+      model_results <- rbind(model_results, data.frame(Parameter = parameter,
+                                                       AICc = polynomial_AICc,
+                                                       p.value1 = polynomial_p.value,
+                                                       p.value2 = NA,
+                                                       Estimate1 = polynomial_Estimate1,
+                                                       Estimate2 = polynomial_Estimate2,
+                                                       type = "polynomial"))
+      
+      # Add the ggplot object to the plotlist
+      plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
+        geom_point() +
+        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+        labs(x = parameter) +
+        theme_bw()
+    }
+  }
+  
+  grid.arrange(grobs = plotlist, ncol = 2)
+  
+  return(model_results)
+}
+# Example usage:
+# result <- analyze_dsr_caged(SI_data, "Porites rus", "Δ15N")
+```
+
 
 #### Pac growth
 
-```{r Pac growth models}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value1 = numeric(),
-                            p.value2 = numeric(),
-                            Estimate1 = numeric(),
-                            Estimate2 = numeric(),
-                            type = character(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
-
-parameters <- unique(PAC_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- PAC_model_scaled_data_long%>% 
-    filter(Parameter == parameter)
-#  %>% filter(Cage_Uncaged == "C")
-  
-  # Fit the mixed-effects model
-  linear_model <- lmer(Percent_Change ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  #squared_model <- lmer(Percent_Change ~ (value^2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  polynomial_model <- lmer(Percent_Change ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc
-  linear_AICc <- AICc(linear_model)
-  #squared_AICc <- AICc(squared_model)
-  polynomial_AICc <- AICc(polynomial_model)
-  
-  # Get p-value from summary
-  linear_model_summary <- summary(linear_model)
-  anova_linear <- car::Anova(linear_model)
-  linear_p.value <- anova_linear$`Pr(>Chisq)`
-  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-  #squared_model_summary <- summary(squared_model)
-  #squared_p.value <- squared_model_summary$coefficients["value", "Pr(>|t|)"]
-  polynomial_model_summary <- summary(polynomial_model)
-  anova_poly <- car::Anova(polynomial_model)
-  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-  
-  # Get Estimate
-  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-  #squared_Estimate <- squared_model_summary$coefficients["value", "Estimate"]
-  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-  
-  if (linear_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = linear_AICc,
-                                                     p.value1 = linear_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = linear_Estimate,
-                                                     Estimate2 = "NA",
-                                                     type = "linear"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
-      geom_point() +
-      geom_smooth(method = "lm") +
-      labs(x = parameter) +
-      theme_bw()
-  }
-  
-    if (polynomial_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = polynomial_AICc,
-                                                     p.value1 = polynomial_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = polynomial_Estimate1,
-                                                     Estimate2 = polynomial_Estimate2,
-                                                     type = "polynomial"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
-      geom_point() +
-      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-      labs(x = parameter) +
-      theme_bw()
-    }
-}
-  
- #if (squared_p.value < 0.05) {
-    # Add results to the dataframe
-#    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-#                                                     AICc = squared_AICc,
-#                                                     p.value1 = squared_p.value,
-#                                                     p.value2 = "NA",
-#                                                     Estimate1 = squared_Estimate,
-#                                                     Estimate2 = "NA",
-#                                                     type = "squared"))
-    
-    # Create an effects plot using ggpredict
-#    squared_effect_plot <- ggpredict(squared_model, terms = "value[all]")
-    
-    # Extract the ggplot object from the ggpredict object
-#    squared_ggplot_obj <- plot(squared_effect_plot)
-    
-    # Add the ggplot object to the plotlist
-#    plotlist[[parameter]] <- squared_ggplot_obj + ggtitle(parameter)
-# }
-
-grid.arrange(grobs = plotlist, ncol = 2)
-
-model_results$Species <- "Pocillopora acuta"
-
-PAC_growth_model_results <- model_results
-PAC_growth_model_results[order(PAC_growth_model_results$AICc), c(1, 7, 2:6)]
+```{r}
+PAC_growth_model_results <- analyze_dsr(PAC_model_scaled_data_long, "Pocillopora acuta", "Percent_Change")
+PAC_growth_model_results[order(PAC_growth_model_results$AICc),]
 ```
 
 ##### Multivariate
@@ -736,97 +807,15 @@ PAC_growth.avg$sw
 
 #### Pru growth 
 
-```{r, message=FALSE}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value1 = numeric(),
-                            p.value2 = numeric(),
-                            Estimate1 = numeric(),
-                            Estimate2 = numeric(),
-                            type = character(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
-
-parameters <- unique(PRU_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-    subset_data <- PRU_model_scaled_data_long%>% 
-    filter(Parameter == parameter) %>% 
-      filter(Cage_Uncaged == "C") %>% 
-       filter(!(Pin_Number == "14"))
-  
-  # Fit the mixed-effects model
-  linear_model <- lmer(Percent_Change ~ value + (1|Genotype), data = subset_data)
-  polynomial_model <- lmer(Percent_Change ~ poly(value,2) + (1|Genotype), data = subset_data)
-  
-  # Get AICc
-  linear_AICc <- AICc(linear_model)
-  polynomial_AICc <- AICc(polynomial_model)
-  
-  # Get p-value from summary
-  linear_model_summary <- summary(linear_model)
-  anova_linear <- car::Anova(linear_model)
-  linear_p.value <- anova_linear$`Pr(>Chisq)`
-  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-  polynomial_model_summary <- summary(polynomial_model)
-  anova_poly <- car::Anova(polynomial_model)
-  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-  
-  # Get Estimate
-  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-  
-  if (linear_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = linear_AICc,
-                                                     p.value1 = linear_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = linear_Estimate,
-                                                     Estimate2 = "NA",
-                                                     type = "linear"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
-      geom_point() +
-      geom_smooth(method = "lm") +
-      labs(x = parameter) +
-      theme_bw()
-  }
-  
-    if (polynomial_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = polynomial_AICc,
-                                                     p.value1 = polynomial_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = polynomial_Estimate1,
-                                                     Estimate2 = polynomial_Estimate2,
-                                                     type = "polynomial"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = Percent_Change)) +
-      geom_point() +
-      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-      geom_text(aes(label = Pin_Number)) +
-      labs(x = parameter) +
-      theme_bw()
-    }
-}
-
-grid.arrange(grobs = plotlist, ncol = 2)
-
-model_results$Species <- "Porites rus"
-
-PRU_growth_model_results <- model_results
-PRU_growth_model_results[order(PRU_growth_model_results$AICc), c(8, 1, 7, 2:6)]
+```{r}
+PRU_model_scaled_data_long %>% 
+  filter(Cage_Uncaged == "C") %>% 
+       filter(!(Pin_Number == "14")) %>%  #found this in earlier code
+  analyze_dsr_caged("Porites rus", "Percent_Change") -> PRU_growth_model_results
+PRU_growth_model_results[order(PRU_growth_model_results$AICc),]
 ```
 
 ##### Multivariate PRU Growth:
-
-Callie, you gotta remember you can't keep the uncaged rus in this bih
 
 ```{r, eval = FALSE}
 multivariate_PRU_growth <- lmer(Percent_Change ~ poly(Low_Tide_Mean_Salinity_scaled,2) + poly(Low_Tide_Mean_Temperature_scaled,2) + (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
@@ -838,263 +827,28 @@ car::Anova(multivariate_PRU_growth)
 
 #### Pac symb
 
-```{r model all parameteres scaled against symbiont, warning=FALSE, message=FALSE}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value1 = numeric(),
-                            p.value2 = numeric(),
-                            Estimate1 = numeric(),
-                            Estimate2 = numeric(),
-                            type = character(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
+```{r}
+PAC_model_scaled_data_long$log_sym_cm2 <- log10(PAC_model_scaled_data_long$FSC.Events_per_cm_2)
+PAC_model_scaled_data_long$log_sym_gm <- log10(PAC_model_scaled_data_long$FSC.Events_per_g_dry_weight)
 
-parameters <- unique(PAC_model_scaled_data_long$Parameter)
+PAC_sym_cm2_model_results <- analyze_dsr(PAC_model_scaled_data_long, "Pocillopora acuta", "log_sym_cm2")
+PAC_sym_cm2_model_results[order(PAC_sym_cm2_model_results$AICc),]
 
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <- subset(PAC_model_scaled_data_long, Parameter == parameter)
-  
-  # Fit the mixed-effects model
-  linear_model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  polynomial_model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc
-  linear_AICc <- AICc(linear_model)
-  polynomial_AICc <- AICc(polynomial_model)
-  
-  # Get p-value from summary
-  linear_model_summary <- summary(linear_model)
-  anova_linear <- car::Anova(linear_model)
-  linear_p.value <- anova_linear$`Pr(>Chisq)`
-  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-  polynomial_model_summary <- summary(polynomial_model)
-  anova_poly <- car::Anova(polynomial_model)
-  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-  
-  # Get Estimate
-  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-  
-  if (linear_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = linear_AICc,
-                                                     p.value1 = linear_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = linear_Estimate,
-                                                     Estimate2 = "NA",
-                                                     type = "linear"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
-      geom_point() +
-      geom_smooth(method = "lm") +
-      labs(x = parameter) +
-      theme_bw()
-  }
-  
-    if (polynomial_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = polynomial_AICc,
-                                                     p.value1 = polynomial_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = polynomial_Estimate1,
-                                                     Estimate2 = polynomial_Estimate2,
-                                                     type = "polynomial"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
-      geom_point() +
-      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-      labs(x = parameter) +
-      theme_bw()
-    }
-}
-
-grid.arrange(grobs = plotlist, ncol = 2)
-
-model_results$Species <- "Pocillopora acuta"
-
-PAC_symb_model_results <- model_results
-PAC_symb_model_results[order(PAC_symb_model_results$AICc), c(8, 1, 7, 2:6)]
+PAC_sym_gm_model_results <- analyze_dsr(PAC_model_scaled_data_long, "Pocillopora acuta", "log_sym_gm")
+PAC_sym_gm_model_results[order(PAC_sym_gm_model_results$AICc),]
 ```
 
 
 #### Pru symb 
+```{r}
+PRU_model_scaled_data_long$log_sym_cm2 <- log10(PRU_model_scaled_data_long$FSC.Events_per_cm_2)
+PRU_model_scaled_data_long$log_sym_gm <- log10(PRU_model_scaled_data_long$FSC.Events_per_g_dry_weight)
 
-```{r PRU symbionts by cm}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value1 = numeric(),
-                            p.value2 = numeric(),
-                            Estimate1 = numeric(),
-                            Estimate2 = numeric(),
-                            type = character(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
+PRU_sym_cm2_model_results <- analyze_dsr(PRU_model_scaled_data_long, "Porites rus", "log_sym_cm2")
+PRU_sym_cm2_model_results[order(PRU_sym_cm2_model_results$AICc),]
 
-parameters <- unique(PRU_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <-PRU_model_scaled_data_long %>% 
-    filter(Parameter == parameter) %>% 
-    filter(!(Pin_Number == "14" & Cage_Uncaged == "C"))
-  
-  # Fit the mixed-effects model
-  linear_model <- lmer(log10(FSC.Events_per_cm_2) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  polynomial_model <- lmer(log10(FSC.Events_per_cm_2) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc
-  linear_AICc <- AICc(linear_model)
-  polynomial_AICc <- AICc(polynomial_model)
-  
-  # Get p-value from summary
-  linear_model_summary <- summary(linear_model)
-  anova_linear <- car::Anova(linear_model)
-  linear_p.value <- anova_linear$`Pr(>Chisq)`
-  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-  polynomial_model_summary <- summary(polynomial_model)
-  anova_poly <- car::Anova(polynomial_model)
-  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-  
-  # Get Estimate
-  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-  
-  if (linear_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = linear_AICc,
-                                                     p.value1 = linear_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = linear_Estimate,
-                                                     Estimate2 = "NA",
-                                                     type = "linear"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
-      geom_point() +
-      geom_smooth(method = "lm") +
-      labs(x = parameter) +
-      theme_bw()
-  }
-  
-    if (polynomial_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = polynomial_AICc,
-                                                     p.value1 = polynomial_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = polynomial_Estimate1,
-                                                     Estimate2 = polynomial_Estimate2,
-                                                     type = "polynomial"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
-      geom_point() +
-      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-      labs(x = parameter) +
-      theme_bw()
-    }
-}
-
-grid.arrange(grobs = plotlist, ncol = 2)
-
-model_results$Species <- "Porites rus"
-
-PRU_symb_model_results <- model_results
-PRU_symb_model_results[order(PRU_symb_model_results$AICc), c(8, 1, 7, 2:6)]
-```
-
-```{r, message=FALSE}
-model_results <- data.frame(Parameter = character(),
-                            AICc = numeric(),
-                            p.value1 = numeric(),
-                            p.value2 = numeric(),
-                            Estimate1 = numeric(),
-                            Estimate2 = numeric(),
-                            type = character(),
-                            stringsAsFactors = FALSE)
-plotlist <- list()
-
-parameters <- unique(PRU_model_scaled_data_long$Parameter)
-
-for (parameter in parameters) {
-  # Create a subset of data for the current parameter
-  subset_data <-PRU_model_scaled_data_long %>% 
-    filter(Parameter == parameter) %>% 
-    filter(!(Pin_Number == "14" & Cage_Uncaged == "C"))
-  
-  # Fit the mixed-effects model
-  linear_model <- lmer(log10(FSC.Events_per_g_dry_weight) ~ value + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  polynomial_model <- lmer(log10(FSC.Events_per_g_dry_weight) ~ poly(value,2) + (1|Genotype) + (1|Cage_Uncaged), data = subset_data)
-  
-  # Get AICc
-  linear_AICc <- AICc(linear_model)
-  polynomial_AICc <- AICc(polynomial_model)
-  
-  # Get p-value from summary
-  linear_model_summary <- summary(linear_model)
-  anova_linear <- car::Anova(linear_model)
-  linear_p.value <- anova_linear$`Pr(>Chisq)`
-  linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-  polynomial_model_summary <- summary(polynomial_model)
-  anova_poly <- car::Anova(polynomial_model)
-  polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-  
-  # Get Estimate
-  linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-  polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-  polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-  
-  if (linear_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = linear_AICc,
-                                                     p.value1 = linear_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = linear_Estimate,
-                                                     Estimate2 = "NA",
-                                                     type = "linear"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
-      geom_point() +
-      geom_smooth(method = "lm") +
-      labs(x = parameter) +
-      theme_bw()
-  }
-  
-    if (polynomial_p.value < 0.05) {
-    # Add results to the dataframe
-    model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                     AICc = polynomial_AICc,
-                                                     p.value1 = polynomial_p.value,
-                                                     p.value2 = "NA",
-                                                     Estimate1 = polynomial_Estimate1,
-                                                     Estimate2 = polynomial_Estimate2,
-                                                     type = "polynomial"))
-    
-    # Add the ggplot object to the plotlist
-    plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = log10(FSC.Events_per_cm_2))) +
-      geom_point() +
-      geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-      labs(x = parameter) +
-      theme_bw()
-    }
-}
-
-grid.arrange(grobs = plotlist, ncol = 2)
-
-model_results$Species <- "Porites rus"
-
-PRU_symb_model_results <- model_results
-PRU_symb_model_results[order(PRU_symb_model_results$AICc), c(8, 1, 7, 2:6)]
+PRU_sym_gm_model_results <- analyze_dsr(PRU_model_scaled_data_long, "Porites rus", "log_sym_gm")
+PRU_sym_gm_model_results[order(PRU_sym_gm_model_results$AICc),]
 ```
 
 
@@ -2217,184 +1971,8 @@ response_by_explan
 
 
 
-```{r analyze function}
-analyze_dsr <- function(data, species, response_variable) {
-  model_results <- data.frame(Parameter = character(),
-                              AICc = numeric(),
-                              p.value1 = numeric(),
-                              p.value2 = numeric(),
-                              Estimate1 = numeric(),
-                              Estimate2 = numeric(),
-                              type = character(),
-                              stringsAsFactors = FALSE)
-  plotlist <- list()
-  
-  parameters <- unique(data$Parameter)
-  
-  for (parameter in parameters) {
-    # Create a subset of data for the current parameter
-    subset_data <- data %>%
-      filter(Parameter == parameter)
-    
-    # Fit the mixed-effects model
-    linear_model <- lmer(as.formula(paste(response_variable, "~ value + (1|Genotype) + (1|Cage_Uncaged)")), data = subset_data)
-    polynomial_model <- lmer(as.formula(paste(response_variable, "~ poly(value, 2) + (1|Genotype) + (1|Cage_Uncaged)")), data = subset_data)
-    
-    # Get AICc
-    linear_AICc <- AICc(linear_model)
-    polynomial_AICc <- AICc(polynomial_model)
-    
-    # Get p-value from summary
-    linear_model_summary <- summary(linear_model)
-    anova_linear <- car::Anova(linear_model)
-    linear_p.value <- anova_linear$`Pr(>Chisq)`
-    linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-    
-    polynomial_model_summary <- summary(polynomial_model)
-    anova_poly <- car::Anova(polynomial_model)
-    polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-    
-    # Get Estimate
-    linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-    polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-    polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-    
-    if (linear_p.value < 0.05) {
-      # Add results to the dataframe
-      model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                       AICc = linear_AICc,
-                                                       p.value1 = linear_p.value,
-                                                       p.value2 = NA,
-                                                       Estimate1 = linear_Estimate,
-                                                       Estimate2 = NA,
-                                                       type = "linear"))
-      
-      # Add the ggplot object to the plotlist
-      plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
-        geom_point() +
-        geom_smooth(method = "lm") +
-        labs(x = parameter) +
-        theme_bw()
-    }
-    
-    if (polynomial_p.value < 0.05) {
-      # Add results to the dataframe
-      model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                       AICc = polynomial_AICc,
-                                                       p.value1 = polynomial_p.value,
-                                                       p.value2 = NA,
-                                                       Estimate1 = polynomial_Estimate1,
-                                                       Estimate2 = polynomial_Estimate2,
-                                                       type = "polynomial"))
-      
-      # Add the ggplot object to the plotlist
-      plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
-        geom_point() +
-        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-        labs(x = parameter) +
-        theme_bw()
-    }
-  }
-  
-  grid.arrange(grobs = plotlist, ncol = 2)
-  
-  return(model_results)
-}
-# Example usage:
-# result <- analyze_species(SI_data, "Porites rus", "Δ15N")
-```
-
-```{r analyze function no re of cage}
-analyze_dsr_caged <- function(data, species, response_variable) {
-  model_results <- data.frame(Parameter = character(),
-                              AICc = numeric(),
-                              p.value1 = numeric(),
-                              p.value2 = numeric(),
-                              Estimate1 = numeric(),
-                              Estimate2 = numeric(),
-                              type = character(),
-                              stringsAsFactors = FALSE)
-  plotlist <- list()
-  
-  parameters <- unique(data$Parameter)
-  
-  for (parameter in parameters) {
-    # Create a subset of data for the current parameter
-    subset_data <- data %>% 
-      filter(Parameter == parameter)
-    
-    # Fit the mixed-effects model
-    linear_model <- lmer(as.formula(paste(response_variable, "~ value + (1|Genotype)")), data = subset_data)
-    polynomial_model <- lmer(as.formula(paste(response_variable, "~ poly(value, 2) + (1|Genotype)")), data = subset_data)
-    
-    # Get AICc
-    linear_AICc <- AICc(linear_model)
-    polynomial_AICc <- AICc(polynomial_model)
-    
-    # Get p-value from summary
-    linear_model_summary <- summary(linear_model)
-    anova_linear <- car::Anova(linear_model)
-    linear_p.value <- anova_linear$`Pr(>Chisq)`
-    linear_p.value <- linear_model_summary$coefficients["value", "Pr(>|t|)"]
-    
-    polynomial_model_summary <- summary(polynomial_model)
-    anova_poly <- car::Anova(polynomial_model)
-    polynomial_p.value <- anova_poly$`Pr(>Chisq)`
-    
-    # Get Estimate
-    linear_Estimate <- linear_model_summary$coefficients["value", "Estimate"]
-    polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
-    polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
-    
-    if (linear_p.value < 0.05) {
-      # Add results to the dataframe
-      model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                       AICc = linear_AICc,
-                                                       p.value1 = linear_p.value,
-                                                       p.value2 = NA,
-                                                       Estimate1 = linear_Estimate,
-                                                       Estimate2 = NA,
-                                                       type = "linear"))
-      
-      # Add the ggplot object to the plotlist
-      plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
-        geom_point() +
-        geom_smooth(method = "lm") +
-        labs(x = parameter) +
-        theme_bw()
-    }
-    
-    if (polynomial_p.value < 0.05) {
-      # Add results to the dataframe
-      model_results <- rbind(model_results, data.frame(Parameter = parameter,
-                                                       AICc = polynomial_AICc,
-                                                       p.value1 = polynomial_p.value,
-                                                       p.value2 = NA,
-                                                       Estimate1 = polynomial_Estimate1,
-                                                       Estimate2 = polynomial_Estimate2,
-                                                       type = "polynomial"))
-      
-      # Add the ggplot object to the plotlist
-      plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
-        geom_point() +
-        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-        labs(x = parameter) +
-        theme_bw()
-    }
-  }
-  
-  grid.arrange(grobs = plotlist, ncol = 2)
-  
-  return(model_results)
-}
-# Example usage:
-# result <- analyze_species(SI_data, "Porites rus", "Δ15N")
-```
-
-
-
 ```{r}
-PAC_growth <- analyze_species(PAC_model_scaled_data_long, "Pocillopora acuta", "Percent_Change")
+PAC_growth <- analyze_dsr(PAC_model_scaled_data_long, "Pocillopora acuta", "Percent_Change")
 PAC_growth[order(PAC_growth$AICc),]
 PAC_growth_model_results[order(PAC_growth_model_results$AICc),]
 ```
