@@ -60,6 +60,7 @@ FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
 #From this, we only used the last 120 ul (cut out 30 seconds at the beginning which is 30 uL)
 #Assuming the 8 second mix appropriately homogenized everything, this means we used 120/150 of the sample (aka 80% of the sample)
 FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / (28*(120/150)) #28 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
+FCM$FSC.Events.per.ul <- FCM$FSC.Events.per.ul * (1-0.0159) #
 #Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
 FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
 

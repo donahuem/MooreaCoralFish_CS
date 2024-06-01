@@ -18,15 +18,18 @@ library(grid) #for as.grob
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 #nut <- read.csv("data/March_nutrients_processed.csv")
 nut <- read.csv("data/Wet_Nutrients_Processed.csv")
-all_nut <- read.csv("data/Nutrients_Processed_All.csv")
+all_nut <- read.csv("data/All_Nutrients_Processed.csv")
 shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
 seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv")
 depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
 clod <- read.csv("data/Clod_Cards.csv")
 ```
-```{r}
+
+
+```{r making columns}
 clod$CowTagID <- paste0("V",clod$PIN)
 clod <- clod[,c(13,11)]
+turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv")
 
 depth <- depth[,c(1,2,6)]
 shore_dist <- left_join(shore_dist, seep_dist, by ="CowTagID")
@@ -39,7 +42,6 @@ shore_dist <- left_join(shore_dist, depth, by = "CowTagID")
 #  names_glue = "{.value}_{Parameters}"
 #)
 #nut_wide_no_seep <- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
-nut_no_seep <- nut[nut$CowTagID != 'VSEEP',]
 
 minimum_columns <- names(nut)[grepl("Minimum_", names(nut)) & 
                                      grepl("Salinity|Temperature|pH", names(nut))]
@@ -55,6 +57,20 @@ pulse_columns <- names(nut)[grepl("Low_Tide_Mean_", names(nut)) &
 meta_columns <- names(nut_no_seep)[c(1)]
 
 #keeping V13 in this ex
+```
+
+```{r scaling columns}
+for (col in pulse_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_nut[[col]], TRUE, TRUE)
+  all_nut[[scaled_variable]] <- scaled_values[, 1]
+}
+
+scaled_pulse_columns <- names(all_nut)[grepl("^Low_Tide_Mean.*_scaled$", names(all_nut))]
+```
+
+```{r}
+nut_no_seep <- all_nut[all_nut$CowTagID != 'VSEEP',]
 ```
 
 ```{r}
@@ -177,8 +193,27 @@ loadings(pca)
 ```
 
 ```{r biplot pulse pca}
-biplot(pca, col = c('grey', 'blue'))
+biplot(pca, col = c('grey', 'blue'), cex = 0.5)
 ```
+
+```{r}
+join_pulse_pca <- left_join(nut_no_seep[,c("CowTagID", "Low_Tide_Mean_NN_umolL_scaled")], turb[,c("CowTagID", "N_percent", "C_N")], by = "CowTagID")
+
+scaled_pulse_pca_data <- nut_no_seep[, c(scaled_pulse_columns)]
+scaled_pulse_pca_data <- na.omit(left_join(scaled_pulse_pca_data, join_pulse_pca[,c(2:4)], by = "Low_Tide_Mean_NN_umolL_scaled"))
+pca = princomp(scaled_pulse_pca_data[,c(2:7)], cor=TRUE)
+summary(pca)
+```
+
+```{r loadings scaled pulse pca}
+biplot(pca, col = c('grey', 'blue'), cex = 0.5)
+```
+
+```{r}
+loadings(pca)
+```
+
+
 
 ```{r}
 nut_no_seep$pulse_pc1 = pca$scores[,1] #what's this data's score on pc1 axis
@@ -201,16 +236,16 @@ grid.arrange(plot1, plot2, ncol = 2)
 
 ```{r REWRITING Explanatory_variables}
 pulse_data <- nut_no_seep[, c(meta_columns, "pulse_pc1", "pulse_pc2")]
-explanatory2 <- pivot_longer(
-  data = pulse_data,
-  cols = c(Maximum_TA:pulse_pc2)) 
-names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
+#explanatory2 <- pivot_longer(
+#  data = pulse_data,
+#  cols = c(Maximum_TA:pulse_pc2)) 
+#names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
 #write.csv(explanatory2,"Explanatory_variables.csv")
-write.csv(pulse_data,"PCA_Pulse_variables_wide.csv")
+write.csv(pulse_data,"data/PCA_Pulse_variables_wide.csv", row.names = FALSE)
 ```
 
 ```{r}
-ggplot(nut_no_seep, aes(x = lon, y = lat, color = Low_Tide_Mean_Silicate_umolL)) +
+ggplot(nut_no_seep, aes(x = lon, y = lat, color = Low_Tide_Mean_Phosphate_umolL)) +
   geom_point() +
   labs(x = "Latitude", y = "Longitude") +
   scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +

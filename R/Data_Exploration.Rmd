@@ -1,0 +1,437 @@
+---
+title: "Moorea Coral Data Exploration"
+author: "Callie Stephenson"
+date: "2024-05-29"
+output: html_document
+---
+## Introduction
+
+This is a R Markdown file in which I hope to write out my analyses. I will use this document to process all the R scripts found in the R folder and complete my project. 
+
+#### Loading the data
+```{r load packages, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(ggrepel)
+library(patchwork)
+library(tidytext)
+library(AICcmodavg)
+library(kableExtra)
+library(PNWColors)
+library(fishualize)
+library(lme4)
+library(lmerTest) #figure out which lme package you need
+library(ggpp)
+library(ggplot2)
+library(GGally)
+library(ggeffects)
+library(arm) #discrete hist
+library(MuMIn) #dredge
+library(effects) #effects plots for dredged models
+library(curl) #curl
+library(gridExtra)
+library(vegan) #pcoa
+```
+
+
+```{r}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
+#explanatory data
+explanatory_all_wide <- read.csv("data/explanatory_all_wide.csv")
+explanatory_seasonal <- read.csv("data/Explanatory_variables.csv")
+
+#Response data
+BW <- read.csv("data/BW_tidy.csv")
+TLE <- read.csv("data/TLE_summary.csv")
+FCM <- read.csv("data/FCM_tidy.csv") %>% 
+  rename(Placement_Code = PLACEMENT)
+response_data <- read.csv("data/response_data.csv")
+
+
+PRU_response_data <- response_data %>% 
+  filter(Species == "Porites rus")
+
+PRU_response_data_caged <- PRU_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+PAC_response_data <- response_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+PAC_response_data_caged <- PAC_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+#metadata
+meta <- read.csv("data/coral_metadata.csv")
+```
+
+
+```{r all data seasonal, warning=FALSE}
+#now make an all data that has both explanatory and response variables:
+all_data_seasonal <- left_join(response_data, explanatory_seasonal, by = join_by(CowTagID))
+#suppress warnings because there will be a many-to-many relationship between x and y
+all_data_seasonal$Genotype <- as.factor(all_data_seasonal$Genotype)
+all_PAC_data_seasonal <- all_data_seasonal %>% 
+  filter(Species == "Pocillopora acuta")
+```
+
+```{r all data both seasons, warning=FALSE}
+#now make an all data that has both explanatory and response variables:
+all_data <- left_join(response_data, explanatory_all, by = join_by(CowTagID))
+#suppress warnings because there will be a many-to-many relationship between x and y
+all_data$Genotype <- as.factor(all_data$Genotype)
+all_PAC_data <- all_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+all_data_wide <- left_join(response_data, explanatory_all_wide, by = join_by(CowTagID))
+```
+
+
+## Data Exploration:
+Data exploration focuses on the following points:
+1. Outliers
+2. Collinearity
+3. Independence (Relationships between response and explanatory variables) 
+
+```{r response data hist, fig.width=10, fig.height=10, echo=FALSE}
+#png("output/response_data_hist.png", width = 1100, height = 1100)
+par(mfrow = c(4,4), oma=c(1,1,3,1))
+hist(PAC_response_data$Change_Over_Area, main="Change Over Area", col="lightblue", xlab="Change_Over_Area")
+hist_columns <- c(7:13)
+for (i in 1:length(hist_columns)) {
+  hist(PAC_response_data[, hist_columns[i]], col="lightblue", 
+       main = paste("PAC", colnames(PAC_response_data)[hist_columns[i]], sep=" - "),
+       xlab=colnames(data)[hist_columns[i]])
+}
+hist(PRU_response_data$Change_Over_Area, main="Change Over Area", col="darkolivegreen3", xlab="Change_Over_Area")
+for (i in 1:length(hist_columns)) {
+  hist(PRU_response_data[, hist_columns[i]], col="darkolivegreen3", 
+       main = paste("PRU", colnames(PRU_response_data)[hist_columns[i]], sep=" - "),
+       xlab=colnames(data)[hist_columns[i]])
+}
+main_title <- "Response Data Exploration"
+title(main = main_title, outer = TRUE)
+#dev.off()
+```
+
+Ok so FSC.Events are both pretty right-skewed. CN says log10 transform these.
+
+
+```{r wet season raw growth data plots, echo=FALSE, fig.width=15, fig.height=15}
+species <- unique(all_data_seasonal$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data_seasonal %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = Percent_Change)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free_x") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+#  ggsave(filename = paste("output/wet_raw_growth_data_response_plot_", sp, ".png", sep = ""),
+#         plot = plot, 
+#         width = 15, height = 15)
+}
+```
+
+Now, doing this again but for both seasons combined:
+```{r both season raw growth data plots, fig.width=15, fig.height=15}
+species <- unique(all_data$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = Percent_Change)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free_x") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+  #ggsave(filename = paste("output/raw_growth_data_response_plot_", sp, ".png", sep = ""),
+  #       plot = plot, 
+  #       width = 15, height = 15)
+}
+```
+
+Same but let's do for FCM data
+
+```{r wet season raw symbiont count plots, echo=FALSE, fig.width=15, fig.height=15}
+species <- unique(all_data_seasonal$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data_seasonal %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = FSC.Events_per_cm_2)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free_x") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+#  ggsave(filename = paste("output/wet_raw_symbiong_count_response_plot_", sp, ".png", sep = ""),
+#         plot = plot, 
+#         width = 15, height = 15)
+}
+```
+
+And again, now for both seasons:
+```{r both seasons raw symbiont count plots, echo=FALSE, fig.width=15, fig.height=15}
+species <- unique(all_data$Species)
+for (sp in species) {
+  # Filter data for the current species and only caged
+  species_data <- all_data %>%
+    filter(Species == sp, Cage_Uncaged == "C")
+  
+  # Create plot for the current species
+  plot <- species_data %>%
+    ggplot(aes(x = value, y = log10(FSC.Events_per_cm_2))) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ Parameter, scales = "free_x") +
+    ggtitle(paste(sp)) +  #Add species name to the plot title
+    theme_bw()
+  # Print and save the plot
+  print(plot)
+  #ggsave(filename = paste("output/raw_growth_data_response_plot_", sp, ".png", sep = ""),
+  #       plot = plot, 
+  #       width = 15, height = 15)
+}
+```
+
+```{r}
+rus_growth_model <- response_data %>%
+  dplyr::filter(Species == "Porites rus")
+ 
+ggplot(rus_growth_model, aes(x = Percent_Change, y = Cage_Uncaged)) +
+  geom_boxplot() +
+  geom_jitter(width = 0, height = 0.2, alpha = 0.5)+
+  geom_text(aes(label = Pin_Number))
+
+rus_growth_model <- lme4::lmer(Percent_Change ~ Cage_Uncaged + (1|Genotype), data = rus_growth_model)
+Anova(rus_growth_model)
+```
+
+```{r}
+rus_growth_model <- response_data %>%
+  dplyr::filter(Species == "Pocillopora acuta")
+ 
+ggplot(rus_growth_model, aes(x = Percent_Change, y = Cage_Uncaged)) +
+  geom_boxplot()+
+  geom_jitter(width = 0, height = 0.2, alpha = 0.5) +
+  geom_text(aes(label = Pin_Number))
+
+rus_growth_model <- lme4::lmer(Percent_Change ~ Cage_Uncaged + (1|Genotype), data = rus_growth_model)
+Anova(rus_growth_model)
+```
+
+
+
+```{r growth change by symbionts per gm}
+symb_growth_model <- response_data %>%
+  filter(Cage_Uncaged == "C") %>%
+  group_by(Species) %>% 
+  do(model = lmer(Percent_Change ~ log10(FSC.Events_per_g_dry_weight) + (1|Genotype), data = .))
+
+# Extract model objects and print the anovas
+model_objects <- symb_growth_model$model
+anova_tables <- lapply(model_objects, function(model) {
+  car::Anova(model)
+})
+anova_tables
+#car::Anova(symb_growth_model$model[[1]]) #less code with small number of models
+car::Anova(symb_growth_model$model[[2]])
+
+# Add a new column to specify which Species should have the smoothing line
+response_data <- response_data %>%
+  mutate(smooth_line = ifelse(Species == "Porites rus", TRUE, FALSE))
+
+# Filter and plot
+response_data %>% 
+  filter(Cage_Uncaged == "C") %>% 
+  ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_g_dry_weight))) +
+  geom_point() +
+  geom_smooth(data = . %>% filter(smooth_line), method = "lm") +
+  ggtitle("Change in BW by Number of Symbionts") +
+#  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~ Species, scales = "free") -> growth_v_symb_plot
+
+growth_v_symb_plot
+
+#ggsave("output/caged_growth_v_symb.png", width = 9, height = 6, plot = growth_v_symb_plot)
+#########
+```
+
+
+```{r growth change by symbionts per cm}
+symb_growth_model <- response_data %>%
+  filter(Cage_Uncaged == "C") %>%
+  group_by(Species) %>% 
+  do(model = lmer(Percent_Change ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = .))
+
+# Extract model objects and print the anovas
+model_objects <- symb_growth_model$model
+anova_tables <- lapply(model_objects, function(model) {
+  car::Anova(model)
+})
+anova_tables
+#car::Anova(symb_growth_model$model[[1]]) #less code with small number of models
+car::Anova(symb_growth_model$model[[2]])
+
+# Add a new column to specify which Species should have the smoothing line
+response_data <- response_data %>%
+  mutate(smooth_line = ifelse(Species == "Porites rus", TRUE, FALSE))
+
+# Filter and plot
+response_data %>% 
+  filter(Cage_Uncaged == "C") %>% 
+  ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2))) +
+  geom_point() +
+  geom_smooth(data = . %>% filter(smooth_line), method = "lm", formula = y ~ poly(x, 2)) +
+  ggtitle("Change in BW by Number of Symbionts") +
+#  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~ Species, scales = "free") -> growth_v_symb_plot
+
+growth_v_symb_plot
+
+#ggsave("output/caged_growth_v_symb.png", width = 9, height = 6, plot = growth_v_symb_plot)
+#########
+```
+
+OK, I don't want this relationship driven by 14 for rus, which I know had a good B coral and a diseased C coral
+
+```{r}
+response_data_no_14C_14B <- response_data %>%
+  filter(Species == "Porites rus" & 
+         (Cage_Uncaged == "C" | (Cage_Uncaged == "B" & Pin_Number == 14)))%>% 
+  filter(!(Pin_Number == 14 & Cage_Uncaged == "C"))
+
+response_data_no_14C <- response_data %>%
+  filter(Species == "Porites rus" & 
+         (Cage_Uncaged == "C")) %>%
+  filter(!(Pin_Number == 14 & Cage_Uncaged == "C"))
+
+model = lmer(Percent_Change ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = response_data_no_14C_14B)
+car::Anova(model)
+
+plot1 <- response_data_no_14C_14B %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+  ggtitle("BW by Number of Symbionts no 14C with 14B")
+
+plot2 <- response_data_no_14C %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
+  geom_point() +
+  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+  ggtitle("BW by Number of Symbionts no 14C")
+
+grid.arrange(plot1, plot2, ncol = 2)
+
+```
+
+
+
+
+```{r bw change in rus vs acuta}
+BW_long <- response_data %>% 
+  filter(Cage_Uncaged == "C") %>%
+  dplyr::select(Species, Percent_Change,Pin_Number ) %>%
+  group_by(Species, Pin_Number)%>%
+  summarise(Percent_ChangeM  = mean(Percent_Change, na.rm = TRUE)) %>% 
+  pivot_wider(names_from = "Species",
+              values_from = "Percent_ChangeM")
+
+growth_v_sp_plot <- ggplot(data = BW_long, aes(x = `Pocillopora acuta`, y = `Porites rus`))+
+  geom_point() +
+  labs(title = "% ∆ BW between species")
+
+#  geom_smooth(method = "lm") +
+  growth_v_sp_plot
+#ggsave("output/caged_growth_v_sp_plot.png", width = 9, height = 6, plot = growth_v_sp_plot)
+```
+
+#### Look for Outliers:
+Buoyant Weight
+It looks like that 13 A is really off. We know it broke, so I am removing it and replotted next to it:
+```{r BW Outlier Tidy, echo=FALSE}
+# BW Plot
+BW <- merge(BW, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
+BW_no <- BW[!(BW$Placement_Code == "PRU V13 A"), ]
+```
+
+Now making a plot to look at outliers:
+```{r BW Outlier Plot, echo=FALSE}
+par(mar = c(2.5, 1, 1, 1) + 0.1)
+layout(matrix(1:2, nrow = 2), heights = c(3, 3))
+#dotchart(BW$Change_Over_Area, main = "∆BW", 
+#         groups = BW$Cage_Uncaged)
+#dotchart(BW_no$Change_Over_Area, main = "∆BW removed erroneous data point", 
+#         groups = BW_no$Cage_Uncaged)
+layout(1)
+```
+I removed PRU V13 A placement because this was broken in the field, creating a large negative change in buoyant weight. 
+
+TLE
+```{r TLE Plot, echo=FALSE}
+TLE <- merge(TLE, meta[, c("Placement_Code", "Cage_Uncaged")], by = "Placement_Code")
+layout(matrix(c(1, 2, 3, 4), 2, 2, byrow = TRUE)) # Setting up the layout
+#dotchart(na.omit(TLE$Max_L_AVG), main = "Max L", groups = na.omit(TLE$Cage_Uncaged)) # Side Max L Plot
+#dotchart(TLE$Max_L_Basal, main = "Max L Basal", groups = na.omit(TLE$Cage_Uncaged)) # Basal Max L plot
+#dotchart(TLE$Area_AVG, main = "Area", groups = na.omit(TLE$Cage_Uncaged)) # Area plot
+#dotchart(TLE$Area_Basal, main = "Basal Area", groups = na.omit(TLE$Cage_Uncaged)) # Basal Area plot
+layout(1) # Reset the layout
+#title("TLE Outlier Dotchart", line = -1, outer = TRUE, cex.main = 1.5)
+```
+
+### Symbionts
+
+```{r Sym plot, echo=FALSE}
+FCM <- FCM[complete.cases(FCM[, "Cage_Uncaged"]), ] #Remove T0 samples by only including rows where the "Cage_Uncaged" exists
+FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged) 
+FCM_no <- FCM[!(FCM$Placement_Code == "PRU V17 C"), ]
+par(mar = c(2.5, 1, 1, 1) + 0.1)
+layout(matrix(1:2, nrow = 2), heights = c(3, 3))
+dotchart(log10(FCM$FSC.Events_per_cm_2), main = "Symbionts", groups = FCM$Cage_Uncaged)
+dotchart(log10(FCM_no$FSC.Events_per_cm_2), main = "Symbionts without erroneous point", groups = FCM_no$Cage_Uncaged)
+layout(1)
+```
+Jess will rerun PRU 49 (PRU V17 C) with her samples - I likely added twice as much as needed to the sample, but for now I will omit in my analyses (using dataframe FCM_no for "no outliers")
+
+```{r FCM Violin Plot}
+FCM_violin <- ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+#  geom_text(aes(label = Pin_Number)) +
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
+  facet_wrap(~Species)+
+  labs(title = expression(paste("Symbionts per ", cm^2, " by caging treatment")))+
+  theme(plot.title = element_text(hjust = 0.5))
+
+FCM_violin
+#ggsave("output/FCM_violin.png", width = 9, height = 6, plot = FCM_violin)
+```
+
+same but other normalization:
+
+```{r FCM Violin Plot Dry Weight}
+ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill = Species)) +
+  geom_violin() +
+  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1) +
+  facet_wrap(~Species)+
+  labs(title = "Symbionts per g dry weight by caging treatment")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+

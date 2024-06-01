@@ -4,8 +4,44 @@ author: "Callie Stephenson"
 date: "2024-04-08"
 output: html_document
 ---
+### Collinearity
+need to make a dataframe that's long that has all the nutrient metrics and independent variables
+Here's the thing: we KNOW the nutrients are collinear
+For example, here's a pairs plot for the maximum of all the nutrient values:
 
+```{r pairs plot collinearity}
+nut_wide_no_seep<- nut_wide[nut_wide$CowTagID != 'VSEEP', ]
+maximum_columns <- names(nut_wide)[grepl("Maximum_", names(nut_wide)) & !grepl("Salinity|Temperature|pH|Ammonia_umol", names(nut_wide))]
 
+#ggpairs( all_nut_no_seep[, c(CV_columns,variance_columns)], progress = FALSE)
+#correlation_matrix <- cor(CV_columns, variance_columns)
+
+all_nut_no_seep<- all_nut[all_nut$CowTagID != 'VSEEP', ]
+plot1 <- all_nut_no_seep %>% 
+  ggplot(aes(x=CV_Silicate_umolL, y = sd_Silicate_umolL))+
+  geom_point()
+  
+plot2 <- all_nut_no_seep %>% 
+  ggplot(aes(x=CV_Silicate_umolL, y = Mean_Silicate_umolL))+
+  geom_point()
+
+grid.arrange(plot1, plot2, ncol =2)
+```
+
+```{r multivariate dredge}
+PRU_symb_big_model <- lmer(log10(FSC.Events_per_cm_2) ~ 
+                       Maximum_Phosphate_umolL_scaled + 
+                       Low_Tide_Mean_Phosphate_umolL_scaled +
+                       (1 | Genotype)+ (1|Cage_Uncaged), 
+                                 data = PRU_model_data, 
+                                 na.action = na.pass)
+
+PRU_symb_big_model_dredge <- dredge(PRU_symb_big_model, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PRU_symb.avg = model.avg(PRU_symb_big_model_dredge, delta < 2)
+summary(PRU_symb.avg)
+PRU_symb.avg$sw
+```
 
 
 ```{r STOP HERE !!!}

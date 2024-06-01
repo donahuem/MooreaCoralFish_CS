@@ -373,8 +373,43 @@ for (sp in species) {
 ```
 
 
+```{r growth change by symbionts per gm}
+symb_growth_model <- response_data %>%
+  filter(Cage_Uncaged == "C") %>%
+  group_by(Species) %>% 
+  do(model = lmer(Percent_Change ~ log10(FSC.Events_per_g_dry_weight) + (1|Genotype), data = .))
 
-```{r growth change by symbionts}
+# Extract model objects and print the anovas
+model_objects <- symb_growth_model$model
+anova_tables <- lapply(model_objects, function(model) {
+  car::Anova(model)
+})
+anova_tables
+#car::Anova(symb_growth_model$model[[1]]) #less code with small number of models
+car::Anova(symb_growth_model$model[[2]])
+
+# Add a new column to specify which Species should have the smoothing line
+response_data <- response_data %>%
+  mutate(smooth_line = ifelse(Species == "Porites rus", TRUE, FALSE))
+
+# Filter and plot
+response_data %>% 
+  filter(Cage_Uncaged == "C") %>% 
+  ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_g_dry_weight))) +
+  geom_point() +
+  geom_smooth(data = . %>% filter(smooth_line), method = "lm") +
+  ggtitle("Change in BW by Number of Symbionts") +
+#  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~ Species, scales = "free") -> growth_v_symb_plot
+
+growth_v_symb_plot
+
+#ggsave("output/caged_growth_v_symb.png", width = 9, height = 6, plot = growth_v_symb_plot)
+#########
+```
+
+
+```{r growth change by symbionts per cm}
 symb_growth_model <- response_data %>%
   filter(Cage_Uncaged == "C") %>%
   group_by(Species) %>% 
