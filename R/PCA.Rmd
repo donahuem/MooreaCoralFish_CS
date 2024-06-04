@@ -241,7 +241,7 @@ pulse_data <- nut_no_seep[, c(meta_columns, "pulse_pc1", "pulse_pc2")]
 #  cols = c(Maximum_TA:pulse_pc2)) 
 #names(explanatory2)[names(explanatory2) == "name"] <- "Parameter"
 #write.csv(explanatory2,"Explanatory_variables.csv")
-write.csv(pulse_data,"data/PCA_Pulse_variables_wide.csv", row.names = FALSE)
+#write.csv(pulse_data,"data/PCA_Pulse_variables_wide.csv", row.names = FALSE)
 ```
 
 ```{r}
@@ -250,5 +250,44 @@ ggplot(nut_no_seep, aes(x = lon, y = lat, color = Low_Tide_Mean_Phosphate_umolL)
   labs(x = "Latitude", y = "Longitude") +
   scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
   theme_minimal()
+```
+
+
+### Kind of silly, but here's a "nutrient loading" PCA. For this, I want to do the pulse at low tide.
+```{r}
+pca.data <- na.omit(nut_no_seep[, c("Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_NN_umolL")])
+pca = princomp(pca.data, cor=TRUE)
+summary(pca)
+biplot(pca)
+loadings(pca)
+```
+
+
+```{r}
+nut_no_seep$nutrient_pc1 = pca$scores[,1] #what's this data's score on pc1 axis
+
+map_data <- left_join(nut_no_seep, seep_dist[,c("CowTagID", "lat", "lon")], by = "CowTagID")
+ggplot(map_data, aes(x = lon, y = lat, color = nutrient_pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+
+```
+
+### Kind of silly, but here's a "calcifying changing" PCA. For this, I think I want to do the variability in these parameters, because that will be highest with SGD
+
+```{r}
+pca.data <- na.omit(nut_no_seep[, c("sd_Salinity", "sd_TA", "sd_pH", "sd_Temperature")])
+pca = princomp(pca.data, cor=TRUE)
+summary(pca)
+biplot(pca)
+```
+
+```{r}
+pca.data <- na.omit(nut_no_seep[, c("Minimum_Salinity", "Maximum_TA", "sd_pH", "Minimum_Temperature")])
+pca = princomp(pca.data, cor=TRUE)
+summary(pca)
+biplot(pca)
 ```
 

@@ -174,7 +174,7 @@ for (sp in species) {
   
   # Create plot for the current species
   plot <- species_data %>%
-    ggplot(aes(x = value, y = FSC.Events_per_cm_2)) +
+    ggplot(aes(x = value, y = log10(FSC.Events_per_cm_2))) +
     geom_point() +
     geom_smooth(method = "lm") +
     facet_wrap(~ Parameter, scales = "free_x") +
