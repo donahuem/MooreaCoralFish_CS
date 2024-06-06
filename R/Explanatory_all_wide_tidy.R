@@ -25,7 +25,8 @@ turb1 <- turb %>%
 turb1 <- turb1 %>%
   dplyr::select(c(CowTagID,
                   N_percent,
-                  C_N))
+                  C_N, 
+                  del15N))
 #use C:N 
 #C:N goes down with SGD
 #can also use N percent

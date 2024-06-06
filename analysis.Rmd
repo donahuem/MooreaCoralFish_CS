@@ -133,7 +133,7 @@ scaled_max_columns <- names(all_data_wide)[grepl("^Maximum.*_scaled$", names(all
 scaled_sd_columns <- names(all_data_wide)[grepl("^sd.*_scaled$", names(all_data_wide))]
 
 # Extract column names for filtering
-selected_columns <- c("FSC.Events_per_cm_2", "Percent_Change", "Genotype", "Cage_Uncaged", "Species",
+selected_columns <- c("FSC.Events_per_cm_2", "Percent_Change", "Genotype", "Cage_Uncaged", "Species","shore_dist_m",
  #                     minimum_columns, 
 #                      maximum_columns,
 #                      CV_columns,
@@ -177,7 +177,7 @@ dredge.data <- na.omit(model_data[, c(scaled_ml_columns,
 ```{r}
 PAC_model_scaled_data_long <- pivot_longer(
   data = PAC_model_data[,c(1:5,6:32, 33,34)], #33 is the Pin_Number
-  cols = c(Minimum_Salinity_scaled:sd_Ammonia_umolL_scaled)) 
+  cols = c(shore_dist_m:sd_Ammonia_umolL_scaled)) 
 names(PAC_model_scaled_data_long)[names(PAC_model_scaled_data_long) == "name"] <- "Parameter"
 
 #PAC_model_data_long <- pivot_longer(
@@ -189,7 +189,7 @@ names(PAC_model_scaled_data_long)[names(PAC_model_scaled_data_long) == "name"] <
 #make the PRU data frame longer
 PRU_model_scaled_data_long <- pivot_longer(
   data = PRU_model_data[,c(1:5,6:32, 33,34)], #67 is the Pin_Number
-  cols = c(Minimum_Salinity_scaled:sd_Ammonia_umolL_scaled)) 
+  cols = c(shore_dist_m:sd_Ammonia_umolL_scaled)) 
 names(PRU_model_scaled_data_long)[names(PRU_model_scaled_data_long) == "name"] <- "Parameter"
 ```
 
@@ -234,7 +234,6 @@ analyze_dsr <- function(data, species, response_variable) {
   model_results <- data.frame(Parameter = character(),
                               AICc = numeric(),
                               p.value1 = numeric(),
-                              p.value2 = numeric(),
                               Estimate1 = numeric(),
                               Estimate2 = numeric(),
                               type = character(),
@@ -276,7 +275,6 @@ analyze_dsr <- function(data, species, response_variable) {
       model_results <- rbind(model_results, data.frame(Parameter = parameter,
                                                        AICc = linear_AICc,
                                                        p.value1 = linear_p.value,
-                                                       p.value2 = NA,
                                                        Estimate1 = linear_Estimate,
                                                        Estimate2 = NA,
                                                        type = "linear"))
@@ -294,7 +292,6 @@ analyze_dsr <- function(data, species, response_variable) {
       model_results <- rbind(model_results, data.frame(Parameter = parameter,
                                                        AICc = polynomial_AICc,
                                                        p.value1 = polynomial_p.value,
-                                                       p.value2 = NA,
                                                        Estimate1 = polynomial_Estimate1,
                                                        Estimate2 = polynomial_Estimate2,
                                                        type = "polynomial"))
@@ -408,7 +405,7 @@ analyze_dsr_caged <- function(data, species, response_variable) {
 
 #### Pac growth
 
-```{r}
+```{r, fig.height= 10}
 PAC_growth_model_results <- analyze_dsr(PAC_model_scaled_data_long, "Pocillopora acuta", "Percent_Change")
 PAC_growth_model_results[order(PAC_growth_model_results$AICc),]
 ```
@@ -416,18 +413,23 @@ PAC_growth_model_results[order(PAC_growth_model_results$AICc),]
 ##### Multivariate
 
 ```{r}
-multivariate_PAC_growth <- lmer(Percent_Change ~ poly(sd_pH_scaled,2) + poly(Minimum_Salinity_scaled,2) + poly(Low_Tide_Mean_Phosphate_umolL_scaled, 2) + (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+multivariate_PAC_growth <- lmer(Percent_Change ~ poly(sd_pH_scaled,2) + poly(Minimum_Salinity_scaled,2) +
+#                                 poly(Low_Tide_Mean_Phosphate_umolL_scaled,2) + 
+#                                  poly(shore_dist_m,2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
 
-summary(multivariate_PAC_growth)
+#summary(multivariate_PAC_growth)
 car::Anova(multivariate_PAC_growth)
+plot(allEffects(multivariate_PAC_growth))
 ```
-
+Ok, so of the top 3 models, two explain different parts of the variation. pH variability and minimum salinity (a conservative SGD tracer, but also what Katie's paper found). Both unimodal, which is sick. 
 
 ```{r multivariate dredge}
 multivariate_PAC_growth <- lmer(Percent_Change ~ 
                        poly(sd_pH_scaled,2) + 
                          poly(Minimum_Salinity_scaled,2) + 
-                         poly(Low_Tide_Mean_Phosphate_umolL_scaled, 2) +
+                                 poly(Low_Tide_Mean_Phosphate_umolL_scaled,2) + 
+                                  poly(shore_dist_m,2) +
                        (1 | Genotype)+ (1|Cage_Uncaged), 
                                  data = PAC_model_data, 
                                  na.action = na.pass)
@@ -439,7 +441,18 @@ summary(PAC_growth.avg)
 PAC_growth.avg$sw
 ```
 
+Both are better than either independently. When I add in the next two models, model averaging says it is better to include them, but if i look a this model, things aren't still significant. Not sure how to interpret this.
+
 #### Pru growth 
+
+Pru growth vs shore distance:
+```{r}
+PRU_model_data1 <- PRU_model_data1 %>%  filter(Cage_Uncaged == "C")
+shore_dist <- lmer(Percent_Change ~ shore_dist_m + (1|Genotype), data = PRU_model_data1)
+#summary(shore_dist)
+Anova(shore_dist)
+```
+
 
 ```{r}
 PRU_model_scaled_data_long %>% 
@@ -449,15 +462,32 @@ PRU_model_scaled_data_long %>%
 PRU_growth_model_results[order(PRU_growth_model_results$AICc),]
 ```
 
+
 ##### Multivariate PRU Growth:
 
 ```{r, eval = FALSE}
-multivariate_PRU_growth <- lmer(Percent_Change ~ poly(Low_Tide_Mean_Salinity_scaled,2) + poly(Low_Tide_Mean_Temperature_scaled,2) + (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
-
-summary(multivariate_PRU_growth)
+multivariate_PRU_growth <- lmer(Percent_Change ~ poly(sd_Phosphate_umolL_scaled,2) + 
+                                  poly(shore_dist_m,2) + (1|Genotype), data = PRU_model_data1)
+#summary(multivariate_PRU_growth)
 car::Anova(multivariate_PRU_growth)
 ```
+```{r multivariate dredge}
+multivariate_PRU_growth <- lmer(Percent_Change ~ 
+                       poly(sd_Phosphate_umolL_scaled,2) + 
+                         poly(shore_dist_m,2) + 
+                                 poly(Minimum_pH_scaled,2) +
+                       (1 | Genotype), 
+                                 data = PRU_model_data1, 
+                                 na.action = na.pass)
 
+multivariate_PRU_growth_dredge <- dredge(multivariate_PRU_growth, trace = 2)
+#model.sel(PAC_cv_low_growth_model_dredge)
+PRU_growth.avg = model.avg(multivariate_PRU_growth_dredge, delta < 15)
+summary(PRU_growth.avg)
+PRU_growth.avg$sw
+```
+
+Better together than apart, but really are any of these good???
 
 #### Pac symb
 
@@ -474,7 +504,7 @@ PAC_sym_gm_model_results[order(PAC_sym_gm_model_results$AICc),]
 
 
 #### Pru symb 
-```{r}
+```{r, message=FALSE}
 PRU_model_scaled_data_long$log_sym_cm2 <- log10(PRU_model_scaled_data_long$FSC.Events_per_cm_2)
 PRU_model_scaled_data_long$log_sym_gm <- log10(PRU_model_scaled_data_long$FSC.Events_per_g_dry_weight)
 
@@ -508,8 +538,7 @@ SI_model_data <- all_data_wide[, selected_columns]
 
 
 PAC_model_data <- na.omit(SI_model_data %>% 
-                            filter(Species == "Pocillopora acuta")) #%>%
-# filter(Cage_Uncaged == "C")
+                            filter(Species == "Pocillopora acuta"))
 
 PRU_model_data <- na.omit(SI_model_data %>% 
         filter(Species == "Porites rus"))
@@ -568,7 +597,36 @@ response_data %>%
   facet_wrap(~Species, scales = "free")
 ```
 
-Looks like in acuta and in rus, there's a lot more heavy nitrogen in the host than in the symbiont. This *does* imply heterotrophy (since the trophic level of host food and of symbionts should be the same)
+Looks like in acuta and in rus, there's a lot more heavy nitrogen in the host than in the symbiont. This *does* imply heterotrophy (since the trophic level of host food and of symbionts should be the same).
+
+
+
+```{r}
+SI_join %>%   
+  filter(!Placement_Code == "T0") %>% 
+  filter(HS == "symb") %>% 
+  ggplot(aes(x = δ15N, y = log10(del15N))) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+#  geom_smooth(method = "lm") +
+  labs(x = "Coral Symbiont Bulk δ15N", y = "Turbinaria Bulk δ15N") +
+#  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~Species, scales = "free")
+```
+Acuta looks like it might be signiciant (rus definitely not)
+```{r}
+Acuta <- SI_join %>%   
+  filter(!Placement_Code == "T0") %>% 
+  filter(HS == "symb") %>%
+  filter(Species == "Pocillopora acuta")
+model <- lmer(δ15N ~ log10(del15N) + (1|Genotype), data = Acuta)
+car::Anova(model)
+summary(model)
+```
+
+I log-transformed the turbinaria data because it was very much not normal, and log10 helped. Coral symbiont δ15N is inversely correlated with Turbinaria δ15N (p=0.07529)
+
+Let's see if this is varying by the nitrate/nitrite (the most SGD-y N source). Might need to re-summarize to make this DIN instead, but would make harder to interpret as SGD since ammonia is so biologically active
 
 
 ```{r, warning=FALSE}
