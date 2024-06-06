@@ -54,17 +54,13 @@ FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
 #GREAT! Now we have the number of cells in each sample
   
 #upscale it to the full sample
-#From the slurry I took 1 ml for FCM
-#From that ml I took 28 ul from the original slurry volume
-#This was then diluted to make a 150 uL sample that was run fast (60 uL/min) on the flow cytometer
-#From this, we only used the last 120 ul (cut out 30 seconds at the beginning which is 30 uL)
-#Assuming the 8 second mix appropriately homogenized everything, this means we used 120/150 of the sample (aka 80% of the sample)
-#5/21/24 I THINK I FOUND THE ERROR
-#I did a 10x dilution - I put 28 ul of sample and then added water to 280 ul, BUT, only 15ul was run. So it *was* a 10x dilution that I need to put in here.
-#So, if we accept homogenization, it would actually be taking 15ul of the slurry volume, meaning what I thought was in 28 ul was actually in 15.
-FCM$FSC.Events.per.ul <- FCM$sym_FSC.Events / (15*(120/150)) #15 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
-FCM$FSC.Events.per.ul <- FCM$FSC.Events.per.ul * (1-0.0159) #
-#Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
+#From the slurry I took 0.984 ml for FCM, and added 0.016 ml of paraformaldehyde
+dilution_factor <- 1 / 0.984
+#From that ml I took 28 ul into a 280 ul sample to make a 10x dilution
+#From this,  only the last 120 ul were used to calculate the number of events
+#Assuming the 8 second mix appropriately homogenized everything, this means we used 12 ul of sample
+FCM$FSC.Events.per.ul <- (FCM$sym_FSC.Events / (12) ) * dilution_factor #15 ul of slurry, 120 seconds/ul count of the 150 seconds/ul total
+#Need to multiply by the amount of slurry adn convert the units (the number of ul in a 25/50 ml sample) to get the number of symbionts per slurry
 FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
 
 
