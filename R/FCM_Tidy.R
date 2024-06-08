@@ -52,6 +52,28 @@ FCM <- merge(FCM, dry_wt[c('PLACEMENT','Approximate.Dry.Weight.of.Whole.Sample')
 
 FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
 #GREAT! Now we have the number of cells in each sample
+
+####adding a new row for the one good sample on 6/7/24
+# Assuming 'FCM' is your DataFrame and the columns are already named as shown
+new_row <- data.frame(
+  PLACEMENT = "PAC 056 2",
+  SLURRY.LABEL = "Second_Run_PAC_056",                           # Adjust the values as necessary
+  ORIGINAL.SLURRY.VOLUME = 25,
+  AMOUNT.OF.SAMPLE.USED..μL. = 30,
+  sym_FSC.Events = 15155,
+  sym_FSC.Mean.Chla.A = NA,
+  sym_FSC.Events.μL.V. = NA,
+  Pin_Number = NA,
+  Cage_Uncaged = NA,
+  Genotype = NA,
+  Species = "Pocillopora_acuta",
+  Surface_Area = 79.96546,
+  Approximate.Dry.Weight.of.Whole.Sample = 0.356500
+)
+
+# Add the new row to the DataFrame
+FCM <- rbind(FCM, new_row)
+
   
 #upscale it to the full sample
 #From the slurry I took 0.984 ml for FCM, and added 0.016 ml of paraformaldehyde

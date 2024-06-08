@@ -19,9 +19,8 @@ library(lme4)
 
 ```{r input and tidy data, message=FALSE}
 #setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/")
-FCM <- read.csv(here("Data","CS_FCM_Plate_3_1.csv"))
-FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events) #don't come in as numeric for some reason?
-metafcm <-read.csv(here("Data","FCM_Meta.csv"))
+FCM <- read.csv(here("Data","FCM_tidy.csv"))
+
 sa <- read.csv(here("Data","Surface_Area.csv"))
 dry_wt <- read.csv(here("Data", "Wet_Dry_Weight.csv"))
 Edmunds_data <- read.csv(here("Data", "Symbiont_data_published.csv"))
@@ -29,68 +28,10 @@ coral_trait_database <- read.csv(here("Data", "coral_trait_database_data.csv"))
 Wes_data <- read.csv(here("Data", "Wes_sym_data.csv"))
 Fox_data <- read.csv(here("Data","Fox_2021_Phys_master_Dryad.csv"))
 Huffmyer_data <- read.csv(here("Data", "Huffmyer_AdultCoral_SymbiontCellCounts.csv"))
+JK <- read.csv(here("Data", "JK_endosymbiont_density.csv"))
 nut <- read.csv(here("Data","March_nutrients_processed.csv"))
-
-
-#metafcm fixes the FCM dataframe so that is it only the good samples
-metafcm <- metafcm %>%
-  drop_na(SLURRY.LABEL) %>%
-  mutate(Tube.Name.=sprintf("%02d-Well-%s%d", PLATE, ROW, COLUMN)) #using the sprintf() function to format a string based on a template. %02d is a placeholder for an integer (d), with a width of 2 characters, and it will be filled with the value of PLATE. -Well- is a literal string -Well- %s is a placeholder for a string (s), and it will be filled with the value of ROW. %d is a placeholder for an integer (d), and it will be filled with the value of COLUMN.
-merged_FCM <- metafcm %>%
-  left_join(FCM, by = "Tube.Name.") %>%
-  filter(GOOD.SAMPLE)
-
-#take only the columns we want
-FCM_data <- merged_FCM[,c(1,2,6,7,13,17,21)]
-
-#kind of annoying way I've set up these to match with sample names:
-PAC <- read.csv(here("Data", "PAC_Coral_Codes.csv"))%>% 
-  select(!X) %>% 
-  select(!X.1) %>% 
-  rename("PLACEMENT" = "Placement_Code")
-PRU <- read.csv(here("Data", "PRU_Coral_Codes.csv"))%>% 
-  rename("PLACEMENT" = "Placement_Code") %>% 
-  select(!X)
-codes <- rbind(PAC[,c(2,3,4,7,8)],PRU[,c(2,3,4,7,8)])
-
-#now to put the FCM with the coral sample names used everywhere:
-FCM <- left_join(FCM_data, codes)
-FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
-
-#joining with surface area for normalizing
-sa$PLACEMENT <- sa$Placement_Code
-FCM <- merge(FCM, sa[, c('PLACEMENT', 'Surface_Area')], by = 'PLACEMENT') #make a joining variable
-dry_wt$PLACEMENT <- dry_wt$Placement
-FCM <- merge(FCM, dry_wt[c('PLACEMENT','Approximate.Dry.Weight.of.Whole.Sample')])
-
-#These columns are to show that the FCM-generated events per ul is actually divided by total (150) volume, not the one to include
-FCM$FSC.Events.per.sample.ul <- FCM$sym_FSC.Events / ((120))
-FCM$Events.per.total.sample.ul <- FCM$sym_FSC.Events / 150
-
-#So really, the question remains if the FSC.Events is only the 'include' portion, or if the FSC.Events is from the total sample
-#Because why else is the machine dividing the FSC.Events by 150 (the total sample volume) to get the sym_FSC.Events.μL.V.
-#Wes says that it is ONLY in the include gate
 ```
 
-GREAT! Now we have the number of cells in each sample, time to upscale it to the full sample. 
-
-From the slurry I took 1 ml for FCM, from that ml I took 28 ul from the original slurry volume. This was then diluted to make a 150 uL sample that was run fast (60 uL/min) on the flow cytometer. We only used the last 120 ul (cut out 30 seconds at the beginning which is 30 uL). Assuming the 8 second mix appropriately homogenized everything, this means we used 120/150 of the sample (aka 80% of the sample). 
-```{r normalize FCM data}
-amount_of_coral_slurry_in_the_include_gate <- (28*(120/150)) #28 ul of slurry, 120 seconds/ul go in the include gate of the 150 seconds/ul total that were ran for each sample
-
-FCM$FSC.Events.per.coralsample.ul <- FCM$sym_FSC.Events / amount_of_coral_slurry_in_the_include_gate
-
-#Need to multiply by 50,000 (the number of ul in a 50 ml sample) to get the number of symbionts per slurry
-FCM$FSC.Events.per.slurry <- FCM$FSC.Events.per.coralsample.ul * FCM$ORIGINAL.SLURRY.VOLUME * 1000 #og slurry volume is in ml, convert to ul to ml with *1000
-
-#Now, normalizing that to the amount of live surface area that I airbrushed per coral:
-FCM$FSC.Events_per_cm_2 <- FCM$FSC.Events.per.slurry / FCM$Surface_Area 
-
-#Now, normalizing to the dry weight of the coral sample
-FCM$FSC.Events_per_g_dry_weight <- FCM$FSC.Events.per.slurry / FCM$Approximate.Dry.Weight.of.Whole.Sample
-
-#write_csv(FCM, here("Data","FCM_Tidy.csv"))
-```
 
 Ok, now that it is normalized, we can combine it with nutrient data
 ```{r merge fcm and nut, warning=FALSE}
@@ -105,7 +46,8 @@ all_data <- drop_na(all_data)
 Looking for any outliers
 ```{r}
 FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged) 
-dotchart(log10(FCM$FSC.Events_per_cm_2), main = "Symbionts by Caging Treatment", groups = FCM$Cage_Uncaged)
+dotchart1 <- na.omit(FCM)
+dotchart(log10(dotchart1$FSC.Events_per_cm_2), main = "Symbionts by Caging Treatment", groups = dotchart1$Cage_Uncaged)
 ```
 Fig 1. Log-Scaled number of symbionts by coral surface area (Front scatter events per $cm^2$) 
 
@@ -115,6 +57,7 @@ ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_cm_2), fill = Species
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
   facet_wrap(~Species)+
+#  geom_text(aes(label = Pin_Number)) +
   ylab("Symbiodinium density (units cm^-2, log10)")
 ```
 Fig 2. Number of symbionts by coral surface area (Front scatter events per $cm^2$) 
@@ -133,6 +76,7 @@ ggplot(FCM, aes(x = Cage_Uncaged, y = log10(FSC.Events_per_g_dry_weight), fill =
   geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1)+
   facet_wrap(~Species)+
+  geom_text(aes(label = Pin_Number)) +
   ylab("Symbiodinium density (units g^-1, log10)")
 ```
 Fig 4. Number of symbionts by coral surface area (Front scatter events per gram dry slurry weight)
@@ -184,8 +128,13 @@ Huffmyer_data$FSC.Events_per_cm_2 <- Huffmyer_data$Symbionts.cm2
 Huffmyer_data <- Huffmyer_data[,c("Species","FSC.Events_per_cm_2")]
 Huffmyer_data$Source <- "Huffmyer et al., 2020"
 
+###### Jaime's data
+JK$Species <- "Pocillopora acuta"
+JK$FSC.Events_per_cm_2 <- 10^6 * JK$ED_final
+JK$Source <- "Kerlin et al., 2024"
+
 #
-pub_data <- rbind(Edmunds_data, Wes_data, Fox_data)
+pub_data <- rbind(Edmunds_data, Wes_data, Fox_data, JK[,c("Species", "FSC.Events_per_cm_2", "Source")])
 pub_data$origin <- "Published Data"
 ```
 Now that it should all be tidy, let's plot:
