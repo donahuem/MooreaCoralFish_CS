@@ -148,10 +148,26 @@ selected_columns <- c("FSC.Events_per_cm_2", "FSC.Events_per_g_dry_weight","Perc
 
 model_data <- all_data_wide[, selected_columns]
 
+#plotting columns:
+plot_columns <- c("FSC.Events_per_cm_2", "FSC.Events_per_g_dry_weight","Percent_Change", 
+                      "Genotype", "Cage_Uncaged", "Species", "Pin_Number","shore_dist_m",
+                     minimum_columns, 
+                      maximum_columns,
+                  variance_columns,
+                      mean_low_columns,
+                      "pulse_pc1")
+
+plot_data <- all_data_wide[,plot_columns]
 
 PAC_model_data <- na.omit(model_data %>% 
                             filter(Species == "Pocillopora acuta")) #%>%
 # filter(Cage_Uncaged == "C")
+
+PAC_plot_data <-  na.omit(plot_data %>% 
+                            filter(Species == "Pocillopora acuta"))
+
+PRU_plot_data <-  na.omit(plot_data %>% 
+                            filter(Species == "Porites rus"))
 
 PRU_model_data <- na.omit(model_data %>% 
         filter(Species == "Porites rus")) # %>% 
@@ -238,6 +254,8 @@ analyze_dsr <- function(data, species, response_variable) {
                               Estimate1 = numeric(),
                               Estimate2 = numeric(),
                               type = character(),
+                              marginal_R2 = numeric(),
+                              conditional_R2 = numeric(),
                               stringsAsFactors = FALSE)
   plotlist <- list()
   
@@ -271,6 +289,13 @@ analyze_dsr <- function(data, species, response_variable) {
     polynomial_Estimate1 <- polynomial_model_summary$coefficients["poly(value, 2)1", "Estimate"]
     polynomial_Estimate2 <- polynomial_model_summary$coefficients["poly(value, 2)2", "Estimate"]
     
+    #Calculate R2
+    linear_marginal_R2 <- r.squaredGLMM(linear_model)[[1]]
+    linear_conditional_R2 <- r.squaredGLMM(linear_model)[[2]]
+    
+    polynomial_marginal_R2 <- r.squaredGLMM(polynomial_model)[[1]]
+    polynomial_conditional_R2 <- r.squaredGLMM(polynomial_model)[[2]]
+    
     if (linear_p.value < 0.05) {
       # Add results to the dataframe
       model_results <- rbind(model_results, data.frame(Parameter = parameter,
@@ -278,7 +303,9 @@ analyze_dsr <- function(data, species, response_variable) {
                                                        p.value1 = linear_p.value,
                                                        Estimate1 = linear_Estimate,
                                                        Estimate2 = NA,
-                                                       type = "linear"))
+                                                       type = "linear",
+                                                       marginal_R2 = linear_marginal_R2,
+                                                       conditional_R2 = linear_conditional_R2))
       
       # Add the ggplot object to the plotlist
       plotlist[[paste0(parameter, "_linear")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
@@ -295,7 +322,9 @@ analyze_dsr <- function(data, species, response_variable) {
                                                        p.value1 = polynomial_p.value,
                                                        Estimate1 = polynomial_Estimate1,
                                                        Estimate2 = polynomial_Estimate2,
-                                                       type = "polynomial"))
+                                                       type = "polynomial",
+                                                       marginal_R2 = polynomial_marginal_R2,
+                                                       conditional_R2 = polynomial_conditional_R2))
       
       # Add the ggplot object to the plotlist
       plotlist[[paste0(parameter, "_polynomial")]] <- ggplot(data = subset_data, aes(x = value, y = !!sym(response_variable))) +
@@ -414,7 +443,7 @@ PAC_growth_model_results[order(PAC_growth_model_results$AICc),]
 
 ```{r}
 multivariate_PAC_growth <- lmer(Percent_Change ~ poly(sd_pH_scaled,2) + poly(Minimum_Salinity_scaled,2) +
-#                                 poly(Low_Tide_Mean_Phosphate_umolL_scaled,2) + 
+                                 poly(Low_Tide_Mean_Phosphate_umolL_scaled,2) + 
 #                                  poly(shore_dist_m,2) +
                                   (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
 
@@ -429,10 +458,13 @@ multivariate_PAC_growth <- lmer(Percent_Change ~
                        poly(sd_pH_scaled,2) + 
                          poly(Minimum_Salinity_scaled,2) + 
                                  poly(Low_Tide_Mean_Phosphate_umolL_scaled,2) + 
-                                  poly(shore_dist_m,2) +
+#                                  poly(shore_dist_m,2) +
                        (1 | Genotype)+ (1|Cage_Uncaged), 
                                  data = PAC_model_data, 
                                  na.action = na.pass)
+
+Anova(multivariate_PAC_growth)
+plot(allEffects(multivariate_PAC_growth))
 
 multivariate_PAC_growth_dredge <- dredge(multivariate_PAC_growth, trace = 2)
 #model.sel(PAC_cv_low_growth_model_dredge)
@@ -442,6 +474,66 @@ PAC_growth.avg$sw
 ```
 
 Both are better than either independently. When I add in the next two models, model averaging says it is better to include them, but if I look a this model, things aren't significant any more. Not sure how to interpret this.
+
+```{r PLOTTING}
+parameter <- c("sd_pH_scaled", "Minimum_Salinity_scaled", "Low_Tide_Mean_Phosphate_umolL_scaled")
+
+#Plot1
+plot1 <- ggplot(data = PAC_plot_data, aes(x = sd_pH, y = Percent_Change)) +
+        geom_point() +
+        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+        labs(x = "Standard Deviation of pH", y = "Percent Change in Buoyant Weight") +
+        theme_linedraw()
+#Plot2
+plot2 <- ggplot(data = PAC_plot_data, aes(x = Minimum_Salinity, y = Percent_Change)) +
+        geom_point() +
+        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+        labs(x = "Minimum Salinity", y = "Percent Change in Buoyant Weight") +
+        theme_linedraw()
+#Plot3
+plot3 <- ggplot(data = PAC_plot_data, aes(x = Low_Tide_Mean_Phosphate_umolL, y = Percent_Change)) +
+        geom_point() +
+        geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
+        labs(x = "Low Tide Mean Phosphate umol/L", y = "Percent Change in Buoyant Weight") +
+        theme_linedraw()
+
+grid.arrange(plot1, plot2, plot3, nrow = 1)
+
+```
+
+```{r, fig.width=15}
+parameters <- c("sd_pH", "Minimum_Salinity", "Low_Tide_Mean_Phosphate_umolL")
+
+PAC_growth_plot_data_long_prep <- PAC_plot_data[,c("Percent_Change", parameters)]
+PAC_growth_plot_data_long <- pivot_longer(PAC_growth_plot_data_long_prep, 
+                                    cols = parameters,
+                                    names_to = "Parameter", 
+                                    values_to = "Value")
+combined_plot <- ggplot(data = PAC_growth_plot_data_long, aes(x = Value, y = Percent_Change)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "#265588") +
+  labs(x = "", y = "Percent Change in Buoyant Weight") +
+  facet_wrap(~ Parameter, scales = "free_x", nrow = 1) +
+  theme_linedraw() +
+  theme(strip.background = element_rect(fill = "#265588"))
+
+parameter_titles <- c("sd_pH" = "Standard deviation of pH",
+                      "Minimum_Salinity" = "Minimum Salinity",
+                      "Low_Tide_Mean_Phosphate_umolL" = "Low Tide Mean Phosphate (μmol/L)")
+
+combined_plot <- combined_plot +
+  theme(strip.background = element_rect(fill = "#265588")) +
+  # Updating facet labels
+  labs(title = "") +
+  theme(strip.text.x = element_text(size = 12, face = "bold"),
+        strip.text.y = element_text(size = 12, face = "bold")) +
+  facet_wrap(~ Parameter, scales = "free_x", nrow = 1, labeller = labeller(Parameter = parameter_titles))
+
+# Print the combined plot
+print(combined_plot)
+ggsave(filename = "output/PAC_growth_multivariate_effects_plot.png", plot = combined_plot, width = 10, height = 5)
+```
+
 
 #### Pru growth 
 Pru growth vs shore distance:
@@ -513,6 +605,18 @@ PRU_sym_gm_model_results <- analyze_dsr(PRU_model_scaled_data_long, "Porites rus
 PRU_sym_gm_model_results[order(PRU_sym_gm_model_results$AICc),]
 ```
 
+```{r PLOTTING IT}
+pru_symb <- ggplot(data = PRU_plot_data, aes(x = Low_Tide_Mean_Phosphate_umolL, y = log10(FSC.Events_per_cm_2))) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "#265588") +
+  labs(x = expression("Low tide mean phosphate" ~ (μmol/L)),
+       y = expression("Log"[10] ~ " Symbiodiniaceae cells per " ~ cm^2)) +
+  theme_linedraw()
+
+pru_symb
+
+#ggsave(filename = "output/PRU_symb_effects_plot.png", plot = pru_symb, width = 5, height = 4)
+```
 
 ## ISOTOPES
 

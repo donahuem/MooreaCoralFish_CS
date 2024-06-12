@@ -146,13 +146,14 @@ pub_vs_mine <- rbind(pvmmine,pub_data)
 pub_vs_mine$Species <- gsub("Porites_rus", "Porites rus", pub_vs_mine$Species)
 pub_vs_mine$Species <- gsub("Pocillopora_acuta", "Pocillopora acuta", pub_vs_mine$Species)
 
-ggplot(pub_vs_mine, aes(x = origin, y = log10(FSC.Events_per_cm_2), fill = Species, shape = Source)) +
+pubvme <- ggplot(pub_vs_mine, aes(x = origin, y = log10(FSC.Events_per_cm_2), fill = Species)) +
   geom_violin() +
-  geom_jitter(width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
+  geom_jitter(aes(shape = Source), width = 0.2, height = 0, alpha = 0.5) +  # Adding jitter
   scale_fill_fish_d(option = "Acanthurus_olivaceus", alpha = 0.4, begin = 0.3, end = 1) +
   facet_wrap(~Species) +
   ylab("Symbiodinium density (units cm^-2, log10)")
 
+#ggsave(filename = "../output/pub_v_mine.png", plot = pubvme)
 ```
 
 Fig 5. Comparison of the number of symbionts found in each species in this dataset versus published datasets (obtained from Edmunds et al., 2014, Fox et al., 2021, Huffmyer et al., 2020, and Sparagon et al., 2024)

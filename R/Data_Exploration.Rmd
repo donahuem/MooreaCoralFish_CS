@@ -76,11 +76,11 @@ all_PAC_data_seasonal <- all_data_seasonal %>%
 
 ```{r all data both seasons, warning=FALSE}
 #now make an all data that has both explanatory and response variables:
-all_data <- left_join(response_data, explanatory_all, by = join_by(CowTagID))
+#all_data <- left_join(response_data, explanatory_all, by = join_by(CowTagID))
 #suppress warnings because there will be a many-to-many relationship between x and y
-all_data$Genotype <- as.factor(all_data$Genotype)
-all_PAC_data <- all_data %>% 
-  filter(Species == "Pocillopora acuta")
+#all_data$Genotype <- as.factor(all_data$Genotype)
+#all_PAC_data <- all_data %>% 
+#  filter(Species == "Pocillopora acuta")
 
 all_data_wide <- left_join(response_data, explanatory_all_wide, by = join_by(CowTagID))
 ```
@@ -315,8 +315,7 @@ OK, I don't want this relationship driven by 14 for rus, which I know had a good
 
 ```{r}
 response_data_no_14C_14B <- response_data %>%
-  filter(Species == "Porites rus" & 
-         (Cage_Uncaged == "C" | (Cage_Uncaged == "B" & Pin_Number == 14)))%>% 
+  filter(Species == "Porites rus" & (Cage_Uncaged == "C" | (Cage_Uncaged == "B" & Pin_Number == 14))) %>% 
   filter(!(Pin_Number == 14 & Cage_Uncaged == "C"))
 
 response_data_no_14C <- response_data %>%
@@ -324,18 +323,21 @@ response_data_no_14C <- response_data %>%
          (Cage_Uncaged == "C")) %>%
   filter(!(Pin_Number == 14 & Cage_Uncaged == "C"))
 
-model = lmer(Percent_Change ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = response_data_no_14C_14B)
+response_data_PAC <- response_data %>%
+  filter(Species == "Pocillopora acuta")
+
+model = lmer(Percent_Change ~ log10(FSC.Events_per_cm_2) + (1|Genotype), data = response_data_no_14C)
 car::Anova(model)
 
-plot1 <- response_data_no_14C_14B %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
+plot1 <- response_data_PAC %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
   geom_point() +
-  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
-  ggtitle("BW by Number of Symbionts no 14C with 14B")
+#  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+  ggtitle("Pocillopora acuta")
 
 plot2 <- response_data_no_14C %>% ggplot(aes(y = Percent_Change, x = log10(FSC.Events_per_cm_2)))+
   geom_point() +
-  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
-  ggtitle("BW by Number of Symbionts no 14C")
+#  geom_smooth(method = "lm", formula = "y~poly(x,2)") +
+  ggtitle("Porites rus")
 
 grid.arrange(plot1, plot2, ncol = 2)
 
@@ -346,20 +348,69 @@ grid.arrange(plot1, plot2, ncol = 2)
 
 ```{r bw change in rus vs acuta}
 BW_long <- response_data %>% 
-  filter(Cage_Uncaged == "C") %>%
-  dplyr::select(Species, Percent_Change,Pin_Number ) %>%
-  group_by(Species, Pin_Number)%>%
+#  filter(Cage_Uncaged == "C") %>%
+  filter(!(Species == "Porites rus" & Cage_Uncaged == "A" & Pin_Number == "13")) %>%
+  dplyr::select(Species, Percent_Change,Pin_Number, Cage_Uncaged) %>%
+  group_by(Species, Pin_Number,Cage_Uncaged)%>%
   summarise(Percent_ChangeM  = mean(Percent_Change, na.rm = TRUE)) %>% 
   pivot_wider(names_from = "Species",
               values_from = "Percent_ChangeM")
 
-growth_v_sp_plot <- ggplot(data = BW_long, aes(x = `Pocillopora acuta`, y = `Porites rus`))+
-  geom_point() +
-  labs(title = "% ∆ BW between species")
+PRU_genotype <- response_data %>%
+  filter(Species == "Porites rus") %>%
+  distinct(Pin_Number, Genotype) %>%
+  rename(PRU_Genotype = Genotype)
 
-#  geom_smooth(method = "lm") +
-  growth_v_sp_plot
-#ggsave("output/caged_growth_v_sp_plot.png", width = 9, height = 6, plot = growth_v_sp_plot)
+PAC_genotype <- response_data %>%
+  filter(Species == "Pocillopora acuta") %>%
+  distinct(Pin_Number, Genotype) %>%
+  rename(PAC_Genotype = Genotype)
+
+BW_long <- response_data %>%
+  # filter(Cage_Uncaged == "C") %>%
+  filter(!(Species == "Porites rus" & Cage_Uncaged == "A" & Pin_Number == "13")) %>%
+  dplyr::select(Species, Percent_Change, Pin_Number, Cage_Uncaged) %>%
+  group_by(Species, Pin_Number, Cage_Uncaged) %>%
+  summarise(Percent_ChangeM = mean(Percent_Change, na.rm = TRUE)) %>%
+  pivot_wider(names_from = "Species", values_from = "Percent_ChangeM") %>%
+  # Join with genotypes
+  left_join(PRU_genotype, by = "Pin_Number") %>%
+  left_join(PAC_genotype, by = "Pin_Number")
+
+growth_v_sp_plot_all <- ggplot(data = na.omit(BW_long), aes(y = `Pocillopora acuta`, x = `Porites rus`)) +
+  geom_point() +
+  labs(title = "Percent Change in Buoyant Weight by Species") +
+  coord_fixed()+
+  theme_linedraw() +
+  scale_x_continuous(breaks = seq(0, max(BW_long$`Pocillopora acuta`, na.rm = TRUE), by = 5)) +
+  scale_y_continuous(breaks = seq(0, max(BW_long$`Porites rus`, na.rm = TRUE), by = 5)) +
+  theme(
+    axis.title.x = element_text(face = "italic", size = 12),
+    axis.title.y = element_text(face = "italic", size = 12),
+    plot.title = element_text(hjust = 0.5, size = 12)) 
+
+x_range <- range(BW_long$`Porites rus`)
+y_range <- range(BW_long$`Pocillopora acuta`)
+
+# Calculate the aspect ratio
+aspect_ratio <- diff(x_range) / diff(y_range)
+
+print(growth_v_sp_plot_all)
+
+ggsave(filename = "../output/growth_v_sp_plot.png", plot = growth_v_sp_plot)
+ggsave(filename = "../output/growth_v_sp_plot_all1.png",width = 5, height = 4 * (1/aspect_ratio), plot = growth_v_sp_plot_all)
+```
+
+```{r}
+(cor(BW_long$`Pocillopora acuta`, BW_long$`Porites rus`))^2 #how to calculate r and r^2
+cor(BW_long$`Pocillopora acuta`, BW_long$`Porites rus`, method = "spearman")
+
+
+residuals_acuta <- residuals(lmer(BW_long$`Pocillopora acuta` ~ BW_long$`Porites rus` + (1|Cage_Uncaged) + (1|PRU_Genotype) + (1|PAC_Genotype), data = BW_long))
+residuals_rus <- residuals(lmer(BW_long$`Porites rus` ~ BW_long$`Pocillopora acuta` + (1|Cage_Uncaged) + (1|PRU_Genotype) + (1|PAC_Genotype), data = BW_long))
+
+correlation <- cor(residuals_acuta, residuals_rus)
+correlation
 ```
 
 #### Look for Outliers:
