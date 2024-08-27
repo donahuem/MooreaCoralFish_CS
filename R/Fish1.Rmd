@@ -27,7 +27,7 @@ block_count_per_location <- maxn %>%
   summarise(num_blocks = n_distinct(Block))
 
 subset_maxn <- maxn %>%
-  filter(!Pin == "13" & On.Adjacent == "Adjacent") %>% 
+  filter(!(Pin == "13" & On.Adjacent == "Adjacent")) %>% 
   group_by(Pin, On.Adjacent) %>%
   filter(Block %in% sample(unique(Block), 4, replace = FALSE)) %>%
   ungroup()
@@ -116,6 +116,8 @@ p1 <-maxn_avg_top %>%
   theme_linedraw()+ 
   theme(plot.title = element_text(size=9))
 
+p1
+
 ggsave(filename = "output/most_common_fish.png", p1, height = 10, width = 5)
 ```
 
@@ -197,6 +199,21 @@ maxn_explan %>%
 
 NMDS Code from Linda:
 
+DATA CLEANING YOU NEED TO DEAL WITH:
+```{r}
+# Summarize to find duplicates
+duplicates <- subset_maxn %>%
+  dplyr::group_by(Pin, On.Adjacent, Block, Species) %>%
+  dplyr::summarise(count = dplyr::n(), .groups = 'drop') %>%
+  dplyr::filter(count > 1)
+
+# Subset the original data to only include the duplicates
+duplicate_rows <- subset_maxn %>%
+  dplyr::inner_join(duplicates, by = c("Pin", "On.Adjacent", "Block", "Species")) %>%
+  dplyr::arrange(Pin, On.Adjacent, Block, Species)
+```
+
+
 ```{r wide data}
 maxn_sum <- maxn %>%
   group_by(Pin, On.Adjacent, Block, Species) %>%
@@ -204,7 +221,19 @@ maxn_sum <- maxn %>%
   ungroup()
 
 #make it wide
-wide_maxn_df <- pivot_wider(maxn_sum, 
+wide_maxn_df1 <- pivot_wider(maxn_sum, 
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN)
+
+#but now with only the blocks we are using:
+
+subset_maxn1 <- subset_maxn %>%
+  group_by(Pin, On.Adjacent, Block, Species) %>%
+  summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
+  ungroup()
+
+wide_maxn_df <- pivot_wider(subset_maxn1[,c("Pin","On.Adjacent","Block","Species","MaxN")], 
                              id_cols = c("Pin", "On.Adjacent", "Block"),
                              names_from = Species, 
                              values_from = MaxN)
@@ -217,7 +246,7 @@ wide_maxn_df <- wide_maxn_df %>%
 ```{r}
 ##make a dataframe with ONLY your fish data
 ##within the parentheses you write which columns this would be
-Fish2 <-wide_maxn_df[c(4:99)]
+Fish2 <-wide_maxn_df[c(4:68)]
 
 ##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
 Sites<-wide_maxn_df[c(1)]
@@ -244,6 +273,7 @@ nmds
 plot(nmds, type = "text")
 plot(nmds)
 ```
+
 ```{r}
 data.scores = as.data.frame(scores(nmds))
 #including the factors 
@@ -386,4 +416,75 @@ g2
 ggsave("NMDS_with_sig_spp.png", g2, width = 20, height = 20)
 ```
 
+
+### Calculating richness against gradient metrics:
+
+```{r}
+species_richness <- subset_maxn1 %>%
+  filter(!Pin == "13") %>% 
+  filter(!Pin == "14") %>% 
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(Richness = n_distinct(Species[MaxN > 0]))
+
+species_richness_explan <- left_join(species_richness, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
+
+species_richness_explan %>%
+  ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Richness)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal() +
+  facet_wrap(~On.Adjacent)
+
+species_richness_explan %>%
+  ggplot(aes(x = pulse_pc1, y = Richness)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+
+species_richness_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Richness)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+```
+
+### Calculating diversity against gradient metrics:
+```{r}
+species_diversity <- subset_maxn1 %>%
+  filter(!Pin == "13") %>% 
+  filter(!Pin == "14") %>% 
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(Diversity = diversity(MaxN, index = "shannon"))
+
+species_diversity_explan <- left_join(species_diversity, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
+
+species_diversity_explan %>%
+  ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Diversity)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+
+species_diversity_explan %>%
+  ggplot(aes(x = pulse_pc1, y = Diversity)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+
+species_diversity_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Diversity)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal() +
+  facet_wrap(~On.Adjacent)
+```
 
