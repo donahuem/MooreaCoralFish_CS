@@ -218,8 +218,8 @@ rus_growth_model <- response_data %>%
  
 ggplot(rus_growth_model, aes(x = Percent_Change, y = Cage_Uncaged)) +
   geom_boxplot() +
-  geom_jitter(width = 0, height = 0.2, alpha = 0.5)+
-  geom_text(aes(label = Pin_Number))
+  geom_jitter(width = 0, height = 0.2, alpha = 0.5) #+
+#  geom_text(aes(label = Pin_Number))
 
 rus_growth_model <- lme4::lmer(Percent_Change ~ Cage_Uncaged + (1|Genotype), data = rus_growth_model)
 Anova(rus_growth_model)
@@ -377,17 +377,33 @@ BW_long <- response_data %>%
   left_join(PRU_genotype, by = "Pin_Number") %>%
   left_join(PAC_genotype, by = "Pin_Number")
 
+BW_long$Cage_Uncaged <- as.factor(BW_long$Cage_Uncaged)
+BW_long$PRU_Genotype <- as.factor(BW_long$PRU_Genotype)
+BW_long$Source_Colony <- as.integer(BW_long$PRU_Genotype)
+BW_long$Source_Colony <- as.factor(BW_long$Source_Colony)
+```
+
+```{r}
+custom_labels <- c("A" = "Uncaged", "B" = "Cage Control", "C" = "Caged")
+
 growth_v_sp_plot_all <- ggplot(data = na.omit(BW_long), aes(y = `Pocillopora acuta`, x = `Porites rus`)) +
-  geom_point() +
-  labs(title = "Percent Change in Buoyant Weight by Species") +
+  geom_point(aes(shape = Source_Colony, color = Cage_Uncaged)) +
   coord_fixed()+
   theme_linedraw() +
+  labs(
+    shape = "Source Colony",
+    color = "Cage Treatment"  # New legend title for the color scale
+  ) +
   scale_x_continuous(breaks = seq(0, max(BW_long$`Pocillopora acuta`, na.rm = TRUE), by = 5)) +
   scale_y_continuous(breaks = seq(0, max(BW_long$`Porites rus`, na.rm = TRUE), by = 5)) +
+  scale_color_fish_d(option = "Coryphaena_hippurus", labels = custom_labels) +
   theme(
     axis.title.x = element_text(face = "italic", size = 12),
     axis.title.y = element_text(face = "italic", size = 12),
-    plot.title = element_text(hjust = 0.5, size = 12)) 
+    plot.title = element_text(hjust = 0.5, size = 12)) +
+  annotate("text", x = Inf, y = Inf, 
+           label = paste("p =", "0.71", "\nR² =", "0.25"),
+           hjust = 1.1, vjust = 1.1, size = 4)
 
 x_range <- range(BW_long$`Porites rus`)
 y_range <- range(BW_long$`Pocillopora acuta`)
@@ -397,9 +413,9 @@ aspect_ratio <- diff(x_range) / diff(y_range)
 
 print(growth_v_sp_plot_all)
 
-ggsave(filename = "../output/growth_v_sp_plot.png", plot = growth_v_sp_plot)
-ggsave(filename = "../output/growth_v_sp_plot_all1.png",width = 5, height = 4 * (1/aspect_ratio), plot = growth_v_sp_plot_all)
+ggsave(filename = "../output/growth_v_sp_plot_all1.png",height = 5, width = 4 * (1/aspect_ratio), plot = growth_v_sp_plot_all)
 ```
+
 
 ```{r}
 (cor(BW_long$`Pocillopora acuta`, BW_long$`Porites rus`))^2 #how to calculate r and r^2

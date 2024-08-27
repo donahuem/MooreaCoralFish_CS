@@ -1,0 +1,101 @@
+---
+title: "BW_Comparison"
+author: "Callie Stephenson"
+date: "2024-07-19"
+output: html_document
+---
+
+```{r libraries}
+library(dplyr)
+library(ggplot2)
+library(stringr)
+```
+
+```{r data}
+DB_data <- read.csv("https://raw.githubusercontent.com/dbarnas/SGD_drives_both_direct_and_indirect_effects_on_organismal_and_community_metabolism_on_coral_reefs/main/Data/Growth/All_Weight_pChange.csv")
+DB_data <- DB_data %>% 
+  filter(Sp %in% c("PR", "PA")) %>% #only P rus and P acuta
+  mutate(days = ifelse(Sp == "PR", 44, ifelse(Sp == "PA", 40, NA))) %>% #adds a colunn for days in the experiment based off DB slack
+  mutate(Change_per_day = delWeight.g / days) %>% 
+  mutate(Species = ifelse(Sp == "PR","PRU", ifelse(Sp == "PA", "PAC", NA))) %>% 
+  mutate(Origin = "DB")
+  
+CS_data <- read.csv("../data/BW_tidy.csv") 
+CS_data <- CS_data[,c(2:10)] %>% #removes weird X column that I'm keeping because code in other sheets filters it out
+  mutate(Origin = "CS") %>% 
+  mutate(Cage_Uncaged = str_sub(Placement_Code, -1)) %>% 
+  filter(!(Species == "PRU" & Cage_Uncaged != "C"))
+
+BW_all <- rbind(DB_data[,c("Change_per_day", "Species", "Origin")], CS_data[,c("Change_per_day", "Species", "Origin")])
+
+BW_rus <- BW_all %>% 
+  filter(Species == "PRU")
+
+BW_acuta <- BW_all %>% 
+  filter(Species == "PAC")
+```
+
+```{r}
+ggplot(BW_all, aes(x = Origin, y = Change_per_day)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2) +
+  labs(title = "Change per Day by Origin",
+       x = "Origin",
+       y = "Change per Day") +
+  facet_wrap(~Species) +
+  theme_minimal()
+```
+
+```{r}
+par(mfrow = c(2, 2))
+# Define species and origins
+species_list <- c("PRU", "PAC")
+origins_list <- c("DB", "CS")
+
+# Initialize an empty list to store results
+results_list <- list()
+
+# Loop through each species and origin combination
+for (species in species_list) {
+  for (origin in origins_list) {
+    # Filter the data
+    filtered_data <- BW_all %>%
+      filter(Species == species & Origin == origin)
+    
+    # Perform the Shapiro-Wilk test
+    shapiro_test <- shapiro.test(filtered_data$Change_per_day)
+    
+    # Extract p-value
+    p_value <- shapiro_test$p.value
+    
+    #histograms
+    hist(filtered_data$Change_per_day, 
+         main = paste0("Histogram of ", species, " ", origin))
+    
+    # Store the results
+    results_list[[paste0(species, "_", origin)]] <- p_value
+  }
+}
+
+# Create a results data frame
+results <- data.frame(
+  Data_Frame = names(results_list),
+  P_Value = unlist(results_list)
+)
+
+# Print the results
+print(results)
+```
+ PAC DB and PRU CS are not normally distributed!!
+
+```{r}
+Acuta <- wilcox.test(Change_per_day ~ Origin, data = BW_acuta)
+Rus <-  wilcox.test(Change_per_day ~ Origin, data = BW_rus)
+t.test_results <- data.frame(
+  Species = c("P.acuta", "P.rus"),
+  P_Value = c(Acuta$p.value, Rus$p.value)
+)
+t.test_results
+```
+
+T.test inappropriate since the data is not normally distributed. Wilcox test is non-parametric and does not show a difference. 

@@ -1,0 +1,619 @@
+---
+title: "Lasso"
+author: "Callie Stephenson"
+date: "2024-07-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE)
+```
+
+#### Loading the data
+```{r load packages, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(ggrepel)
+library(patchwork)
+library(kableExtra)
+library(PNWColors)
+library(fishualize)
+library(lme4)
+library(lmerTest) #figure out which lme package you need
+library(ggpp)
+library(ggplot2)
+library(GGally)
+library(ggeffects)
+library(arm) #discrete hist
+library(MuMIn) #dredge
+library(effects) #effects plots for dredged models
+library(curl) #curl
+library(gridExtra)
+library(vegan) #pcoa
+library(car)
+library(PerformanceAnalytics)
+library(glmnet)
+```
+
+
+```{r load data, echo=FALSE, message=FALSE}
+#explanatory data
+explanatory_all_wide <- read.csv("../data/explanatory_all_wide.csv")
+
+#Response data
+response_data <- read.csv("../data/response_data.csv")
+response_data$Genotype <- as.factor(response_data$Genotype)
+response_data$Cage_Uncaged <- as.factor(response_data$Cage_Uncaged)
+response_data$Pin_Number <- as.factor(response_data$Pin_Number)
+
+PRU_response_data <- response_data %>% 
+  filter(Species == "Porites rus")
+
+PRU_response_data_caged <- PRU_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+PAC_response_data <- response_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+PAC_response_data_caged <- PAC_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+#metadata
+meta <- read.csv("../data/coral_metadata.csv")
+
+#data:
+all_data_wide <- left_join(response_data, explanatory_all_wide, by = join_by(CowTagID))
+
+only_C_rus <- all_data_wide %>%
+  filter((Species == "Pocillopora acuta") | (Species == "Porites rus" & Cage_Uncaged == "C"))
+```
+
+
+# Correlation of response variables:
+### Symbionts and growth:
+
+In coral biology, we generally assume more symbionts -> more photosynthetic carbon. Therefore, we'd expect that more symbionts -> more growth. In some cases, symbiont populations can become parasitic and hoard resources for themselves. This has been shown at much higher levels of symbionts than seen in this experiment (1-3 x 10^6). So, we'd traditionally expect that more symbionts would lead to higher coral growth. Except....
+
+Percent change in buoyant weight is related to symbiont population only in Porites rus, not in Pocillopora acuta:
+
+```{r pac not predictive, echo=FALSE, warning=FALSE}
+symb_growth_PAC <- lmer(
+  Percent_Change ~ log10(FSC.Events_per_cm_2) +
+    (1 | Genotype) + (1 |
+                        Cage_Uncaged),
+  data = only_C_rus %>% filter(Species == "Pocillopora acuta")
+)
+
+anova_pac <- car::Anova(symb_growth_PAC)
+marginal_R2_pac <- r.squaredGLMM(symb_growth_PAC)[[1]]
+conditional_R2_pac <- r.squaredGLMM(symb_growth_PAC)[[2]]
+
+symb_growth_PRU <- lme4::lmer(
+  Percent_Change ~ log10(FSC.Events_per_cm_2) +
+    (1 | Genotype),
+  data = only_C_rus %>% filter(Species == "Porites rus")
+)
+
+anova_pru <- car::Anova(symb_growth_PRU)
+marginal_R2_pru <- r.squaredGLMM(symb_growth_PRU)[[1]]
+conditional_R2_pru <- r.squaredGLMM(symb_growth_PRU)[[2]]
+
+sym_growth_results <- tibble(
+  Species = c("Pocillopora acuta", "Porites rus"),
+  P_Value = c(anova_pac$`Pr(>Chisq)`, anova_pru$`Pr(>Chisq)`),
+  Marginal_R2 = c(marginal_R2_pac, marginal_R2_pru),
+  Conditional_R2 = c(conditional_R2_pac, conditional_R2_pru)
+)
+
+print(sym_growth_results)
+```
+
+This can be shown graphically. In the first version of this plot, you are only looking at caged P. rus. In the second version, you are seeing all corals in the experiment
+
+```{r only caged rus, echo=FALSE, message=FALSE, warning=FALSE}
+only_C_rus <- only_C_rus %>%
+  mutate(Significant_Species = if_else(Species == "Porites rus", TRUE, FALSE))
+
+ggplot(aes(x = log10(FSC.Events_per_cm_2), y = Percent_Change), data = only_C_rus) +
+  geom_point() +
+  geom_smooth(data = subset(only_C_rus, Significant_Species == TRUE), method = "lm", se = TRUE) +
+  facet_wrap(~Species)
+```
+
+```{r all rus, echo=FALSE, message=FALSE, warning=FALSE}
+response_data1 <- response_data %>%
+  mutate(Significant_Species = if_else(Species == "Porites rus", TRUE, FALSE))
+
+ggplot(aes(x = log10(FSC.Events_per_cm_2), y = Percent_Change), data = response_data1) +
+  geom_point() +
+  geom_smooth(data = subset(response_data1, Significant_Species == TRUE), method = "lm", se = TRUE) +
+  facet_wrap(~Species)
+```
+
+## Isotopes and growth
+
+Now, instead of growing faster because the corals were photosynthesizing more, perhaps the corals were instead feeding more heterotrophically. We test this with Δ13C, which represents how much more δ13C is in the host tissue versus the symbiont. 
+
+```{r, echo=FALSE}
+iso_growth_PAC <- lmer(
+  Percent_Change ~ Δ13C +
+    (1 | Genotype) + (1 | Cage_Uncaged),
+  data = only_C_rus %>% filter(Species == "Pocillopora acuta")
+)
+
+anova_pac <- car::Anova(iso_growth_PAC)
+marginal_R2_pac <- r.squaredGLMM(iso_growth_PAC)[[1]]
+conditional_R2_pac <- r.squaredGLMM(iso_growth_PAC)[[2]]
+
+iso_growth_PRU <- lmer(
+  Percent_Change ~ Δ13C +
+    (1 | Genotype),
+  data = only_C_rus %>% filter(Species == "Porites rus")
+)
+
+anova_pru <- car::Anova(iso_growth_PRU)
+marginal_R2_pru <- r.squaredGLMM(iso_growth_PRU)[[1]]
+conditional_R2_pru <- r.squaredGLMM(iso_growth_PRU)[[2]]
+
+iso_growth_results <- tibble(
+  Species = c("Pocillopora acuta", "Porites rus"),
+  P_Value = c(anova_pac$`Pr(>Chisq)`, anova_pru$`Pr(>Chisq)`),
+  Marginal_R2 = c(marginal_R2_pac, marginal_R2_pru),
+  Conditional_R2 = c(conditional_R2_pac, conditional_R2_pru)
+)
+
+print(iso_growth_results)
+```
+
+NOPE, and we can see this graphically:
+
+```{r, echo=FALSE}
+ggplot(aes(x = Δ13C, y = Percent_Change), data = response_data) +
+  geom_point() +
+#  geom_text(aes(label =Pin_Number)) +
+#  geom_smooth(data = subset(response_data1, Significant_Species == TRUE), method = "lm", se = TRUE) +
+  facet_wrap(~Species, scales = "free_x")
+```
+
+## Both
+
+Since neither relationship is clean, it might be because they are explaining seperate parts of the variation in the growth data. For example, if the variables are not collinear (and thus whatever is driving corals eating is different than whatever is driving increases in symbiont populations), then it is possible that both are contributing to the variation in this dataset.
+
+```{r, echo=FALSE}
+sym_iso_growth_PAC <- lmer(
+  Percent_Change ~ Δ13C + log10(FSC.Events_per_cm_2) +
+    (1 | Genotype) + (1 | Cage_Uncaged),
+  data = only_C_rus %>% filter(Species == "Pocillopora acuta")
+)
+
+anova_pac <- car::Anova(sym_iso_growth_PAC)
+marginal_R2_pac <- r.squaredGLMM(sym_iso_growth_PAC)[[1]]
+conditional_R2_pac <- r.squaredGLMM(sym_iso_growth_PAC)[[2]]
+
+sym_iso_growth_PRU <- lmer(
+  Percent_Change ~ Δ13C + log10(FSC.Events_per_cm_2) +
+    (1 | Genotype),
+  data = only_C_rus %>% filter(Species == "Porites rus")
+)
+
+anova_pru <- car::Anova(sym_iso_growth_PRU)
+marginal_R2_pru <- r.squaredGLMM(sym_iso_growth_PRU)[[1]]
+conditional_R2_pru <- r.squaredGLMM(sym_iso_growth_PRU)[[2]]
+
+sym_iso_growth_results <- tibble(
+  Species = c("Pocillopora acuta", "Porites rus"),
+  P_Value_Δ13C = c(anova_pac$`Pr(>Chisq)`[1], anova_pru$`Pr(>Chisq)`[1]),
+  P_Value_symb = c(anova_pac$`Pr(>Chisq)`[2], anova_pru$`Pr(>Chisq)`[2]),
+  Marginal_R2 = c(marginal_R2_pac, marginal_R2_pru),
+  Conditional_R2 = c(conditional_R2_pac, conditional_R2_pru)
+)
+
+print(sym_iso_growth_results)
+```
+
+Still no! It looks like neither is a good explainer of variation in the growth data.
+
+## What does this mean
+
+The normal understanding of coral biology is that increases in symbiont populations or in heterotrophy should bring in more energy to the host, and therein increase growth; however, we are not seeing these relationships hold up when the coral fragments were introduced to SGD. 
+
+This can also be shown through basic correlation plots of the repsonse variables. I like this version from Performance Analytics:
+
+#### Here, for P. rus:
+```{r, warning=FALSE}
+chart.Correlation(na.omit(PRU_response_data[,c("Percent_Change","FSC.Events_per_cm_2", "Δ15N", "Δ13C")]))
+```
+
+#### or for P.acuta:
+
+```{r, warning=FALSE}
+chart.Correlation(na.omit(PAC_response_data[,c("Percent_Change","FSC.Events_per_cm_2", "Δ15N", "Δ13C")]))
+```
+
+
+Next, I will explore what aspects of the gradient are effecting these response variables to gain a deeper understanding of coral holobiont response to SGD.
+
+But first, let's explore the correlation of the explanatory variables:
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+minimum_columns <- names(all_data_wide)[grepl("Minimum_", names(all_data_wide)) &
+                                          grepl("Salinity|Temperature|pH", names(all_data_wide))]
+#LOOK OUT YOU CHANGED THIS ON APRIL 17
+maximum_columns <- names(all_data_wide)[grepl("Maximum_", names(all_data_wide)) &
+                                          !grepl("Salinity|Temperature|Ammonia_umol", names(all_data_wide))]
+#mean_columns <- names(all_data_wide)[grepl("Mean_", names(all_data_wide)) &
+#                                  !grepl("Salinity|Temperature|pH|Ammonia_umol",names(all_data_wide))]
+CV_columns <- names(all_data_wide)[grepl("CV_", names(all_data_wide), names(all_data_wide))]
+
+mean_low_columns <- names(all_data_wide)[grepl("Low_Tide_Mean_", names(all_data_wide), names(all_data_wide))]
+
+variance_columns <- names(all_data_wide)[grepl("sd_", names(all_data_wide), names(all_data_wide))]
+
+for (col in CV_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_data_wide[[col]], TRUE, TRUE)
+  all_data_wide[[scaled_variable]] <- scaled_values[, 1]
+}
+
+for (col in mean_low_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_data_wide[[col]], TRUE, TRUE)
+  all_data_wide[[scaled_variable]] <- scaled_values[, 1]
+}
+
+for (col in minimum_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_data_wide[[col]], TRUE, TRUE)
+  all_data_wide[[scaled_variable]] <- scaled_values[, 1]
+}
+
+for (col in maximum_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_data_wide[[col]], TRUE, TRUE)
+  all_data_wide[[scaled_variable]] <- scaled_values[, 1]
+}
+
+for (col in variance_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_data_wide[[col]], TRUE, TRUE)
+  all_data_wide[[scaled_variable]] <- scaled_values[, 1]
+}
+
+scaled_cv_columns <- names(all_data_wide)[grepl("^CV.*_scaled$", names(all_data_wide))]
+scaled_ml_columns <- names(all_data_wide)[grepl("^Low.*_scaled$", names(all_data_wide))]
+scaled_min_columns <- names(all_data_wide)[grepl("^Minimum.*_scaled$", names(all_data_wide))]
+scaled_max_columns <- names(all_data_wide)[grepl("^Maximum.*_scaled$", names(all_data_wide))]
+scaled_sd_columns <- names(all_data_wide)[grepl("^sd.*_scaled$", names(all_data_wide))]
+
+# Extract column names for filtering
+selected_columns <- c(
+  "FSC.Events_per_cm_2",
+  "FSC.Events_per_g_dry_weight",
+  "Percent_Change",
+  "Genotype",
+  "Cage_Uncaged",
+  "Species",
+  "Pin_Number",
+#  "shore_dist_m",
+  #                     minimum_columns,
+  #                      maximum_columns,
+  #                      CV_columns,
+  #                      mean_low_columns,
+#  scaled_min_columns,
+#  scaled_max_columns,
+  #                      scaled_cv_columns,
+  scaled_ml_columns,
+  scaled_sd_columns,
+  "pulse_pc1"
+)
+
+#changing selected columns
+selected_columns <- c( "FSC.Events_per_cm_2", "FSC.Events_per_g_dry_weight","Percent_Change","Genotype","Cage_Uncaged","Species","Pin_Number", "Low_Tide_Mean_Phosphate_umolL_scaled", "Low_Tide_Mean_Silicate_umolL_scaled", "Low_Tide_Mean_NN_umolL_scaled", "Low_Tide_Mean_NNP_umolL_scaled", "sd_Salinity_scaled", "sd_Temperature_scaled", "sd_TA_scaled", "sd_pH_scaled"
+)
+
+model_data <- all_data_wide[, selected_columns] %>% 
+  dplyr::select(-matches("ammonia", ignore.case = TRUE))
+
+PAC_model_data <- na.omit(model_data %>%
+                            filter(Species == "Pocillopora acuta"))
+
+PRU_model_data <- na.omit(model_data %>%
+                            filter(Species == "Porites rus"))
+```
+
+
+##
+```{r, warning=FALSE}
+chart.Correlation(na.omit(model_data[,c(8:11)]), histogram = TRUE)
+```
+
+```{r, warning=FALSE}
+chart.Correlation(na.omit(model_data[,c(12:15)]), histogram = TRUE)
+chart.Correlation(na.omit(model_data[,c(8:15)]), histogram = TRUE)
+```
+
+# Lets start with growth of P. acuta
+
+```{r PAC lasso}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data %>% 
+  dplyr::select(-Pin_Number, -Species)
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+PAC_lasso$Cage_Uncaged <- as.factor(PAC_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+```
+
+```{r PRU only C lasso, echo=FALSE}
+# Remove the Pin_Number and Species columns
+PRU_growth_model_data <- PRU_model_data %>% 
+  dplyr::filter(Cage_Uncaged == "C") %>% 
+  dplyr::select(-Pin_Number, -Species)
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_growth_model_data$Genotype <- as.factor(PRU_growth_model_data$Genotype)
+# PRU_growth_model_data$Cage_Uncaged <- as.factor(PRU_growth_model_data$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_growth_model_data)
+# cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_growth_model_data)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_growth_model_data <- cbind(PRU_growth_model_data, genotype_dummies 
+                               # ,cage_uncaged_dummies
+                               )
+PRU_growth_model_data <- PRU_growth_model_data[, !names(PRU_growth_model_data) %in% c("Genotype")] #took cage out of this
+```
+
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data %>% 
+  dplyr::select(-Pin_Number, -Species)
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+PRU_lasso$Cage_Uncaged <- as.factor(PRU_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+```
+
+
+
+```{r lasso PAC growth}
+PAC_model_percent_change_df <- PAC_lasso %>%
+  dplyr::select(-FSC.Events_per_cm_2, -FSC.Events_per_g_dry_weight, -GenotypePR08, -GenotypePR07, -GenotypePR06, -GenotypePR04, -GenotypePR03, -GenotypePR02, -Cage_UncagedT0)
+
+PAC_model_data_matrix <- as.matrix(PAC_model_percent_change_df)
+
+x_pac_percent_change <- PAC_model_data_matrix[, -1]
+y_pac_percent_change <- PAC_model_data_matrix[, 1]
+lasso_PAC_growth <- cv.glmnet(x = x_pac_percent_change, y = y_pac_percent_change)
+coef(lasso_PAC_growth)
+```
+
+```{r elastic net from chat gpt}
+# Load necessary libraries
+library(glmnet)
+library(dplyr)
+
+# Generate polynomial terms for explanatory variables
+poly_degree <- 2  # Degree of the polynomial
+PAC_model_data_matrix <- as.matrix(PAC_model_percent_change_df)
+x_pac_percent_change <- PAC_model_data_matrix[, -1]
+y_pac_percent_change <- PAC_model_data_matrix[, 1]
+
+# Assuming your explanatory variables are in columns 2 to n
+# and you want to create polynomial terms for all of them
+x_poly <- model.matrix(~ poly(x_pac_percent_change[, 1], poly_degree, raw = TRUE) +
+                         poly(x_pac_percent_change[, 2], poly_degree, raw = TRUE) +
+                         # Add poly terms for other variables similarly
+                         ., data = as.data.frame(x_pac_percent_change))
+
+# Fit the elastic net model
+set.seed(123)  # For reproducibility
+lasso_PAC_growth <- cv.glmnet(x = x_poly, y = y_pac_percent_change, alpha = 0.5)  # alpha = 0.5 for elastic net
+coef(lasso_PAC_growth)
+
+# Print coefficients
+print(coef(lasso_PAC_growth))
+```
+
+
+```{r lasso produced multivariate model, echo=FALSE}
+multivariate_PAC_growth <- lmer(Percent_Change ~ sd_Temperature_scaled + sd_TA_scaled + sd_pH_scaled + 
+  (1 | Genotype) + (1 | Cage_Uncaged),
+  data = model_data %>% filter(Species == "Pocillopora acuta")
+)
+summary(multivariate_PAC_growth)
+car::Anova(multivariate_PAC_growth)
+plot(allEffects(multivariate_PAC_growth))
+#car::vif(multivariate_PAC_growth)
+```
+
+This shows that what was most predictive of growth in the Pocillopora acuta was the variability in the biophysical environment, as quantified by temperature, total alkalinity, and pH.
+
+```{r lasso with poly}
+poly_vars <- (PAC_model_percent_change_df[, 2:9])
+polynomial_degree = 2
+poly_terms_list <- lapply(names(poly_vars), function(var) {
+  poly(poly_vars[[var]], degree = polynomial_degree, raw = TRUE)
+})
+
+# Name the polynomial terms appropriately
+poly_terms_df <- as.data.frame(do.call(cbind, poly_terms_list))
+names(poly_terms_df) <- unlist(lapply(names(poly_vars), function(var) {
+  paste0(var, "_poly_", 1:polynomial_degree)
+}))
+
+# Combine the polynomial terms with the rest of the data frame
+PAC_model_data_poly <- cbind(PAC_model_percent_change_df[, c(1, 10:ncol(PAC_model_percent_change_df))], poly_terms_df)
+
+# Convert to matrix for glmnet
+PAC_model_data_matrix_poly <- as.matrix(PAC_model_data_poly)
+
+x_pac_percent_change_poly <- PAC_model_data_matrix_poly[, -1]
+y_pac_percent_change_poly <- PAC_model_data_matrix_poly[, 1]
+
+# Fit Lasso model with polynomial terms
+lasso_PAC_growth_poly <- cv.glmnet(x = x_pac_percent_change_poly, y = y_pac_percent_change_poly)
+coef(lasso_PAC_growth_poly)
+```
+
+
+```{r stepwise pac growth}
+# Step 2: Fit the initial model
+initial_model <- lm(Percent_Change ~ ., data = PAC_model_percent_change_df)
+
+# Step 3: Perform stepwise regression
+stepwise_model <- step(initial_model, direction = "both")
+
+# View the summary of the stepwise regression model
+summary(stepwise_model)
+```
+
+
+
+```{r lasso pru growth model}
+PRU_model_percent_change_df <- PRU_growth_model_data %>%
+  dplyr::select(-FSC.Events_per_cm_2, -FSC.Events_per_g_dry_weight, -Cage_Uncaged, -GenotypePA11, -GenotypePA13, -GenotypePA18, -GenotypePA19, -GenotypePA21, -GenotypePA22)
+
+PRU_model_data_matrix <- as.matrix(PRU_model_percent_change_df)
+
+x_pru_percent_change <- PRU_model_data_matrix[, -1]
+y_pru_percent_change <- PRU_model_data_matrix[, 1]
+
+#chat error
+x_pac_percent_change <- data.matrix(x_pac_percent_change)
+y_pac_percent_change <- as.numeric(y_pac_percent_change)
+
+#back to og code
+lasso_PRU_growth <- cv.glmnet(x = x_pru_percent_change, y = y_pru_percent_change, nfolds = 6) #6 is the most folds i can do
+coef(lasso_PRU_growth)
+```
+
+Now, nothing in the lasso model is explaining variation in growth from the gradient. This is likely because our sample size is reduced to 20 corals. 
+
+```{r loocv}
+elastic_net_PRU_growth <- cv.glmnet(x = x_pru_percent_change, y = y_pru_percent_change, alpha = 0.5,nfolds = 5)
+best_lambda_en <- elastic_net_PRU_growth$lambda.min
+coef(elastic_net_PRU_growth, s = best_lambda_en)
+```
+Stepwise pru growth
+```{r}
+# Step 2: Fit the initial model
+initial_model <- lm(Percent_Change ~ ., data = PRU_model_percent_change_df)
+
+# Step 3: Perform stepwise regression
+stepwise_model <- step(initial_model, direction = "both")
+
+# View the summary of the stepwise regression model
+summary(stepwise_model)
+```
+
+
+
+```{r pac lasso fcm}
+PAC_model_symb_df <- PAC_lasso %>%
+  dplyr::select(-Percent_Change, -FSC.Events_per_g_dry_weight, -GenotypePR08, -GenotypePR07, -GenotypePR06, -GenotypePR04, -GenotypePR03, -GenotypePR02)
+
+PAC_model_data_matrix <- as.matrix(PAC_model_symb_df)
+
+x_pac_percent_change <- PAC_model_data_matrix[, -1]
+y_pac_percent_change <- PAC_model_data_matrix[, 1]
+lasso_PAC_symb <- cv.glmnet(x = x_pac_percent_change, y = y_pac_percent_change)
+coef(lasso_PAC_symb)
+```
+
+```{r}
+# Step 2: Fit the initial model
+initial_model <- lm(FSC.Events_per_cm_2 ~ ., data = PAC_model_symb_df %>% 
+                      dplyr::select(-sd_Temperature_scaled, -sd_TA_scaled, -sd_pH_scaled, -sd_Salinity_scaled))
+
+# Step 3: Perform stepwise regression
+stepwise_model <- step(initial_model, direction = "both")
+
+# View the summary of the stepwise regression model
+summary(stepwise_model)
+```
+
+
+```{r pru lasso fcm}
+PRU_model_symb_df <- PRU_lasso %>%
+  dplyr::select(-Percent_Change, -FSC.Events_per_g_dry_weight, -GenotypePA11, -GenotypePA13, -GenotypePA18, -GenotypePA19, -GenotypePA21, -GenotypePA22)
+
+PRU_model_data_matrix <- as.matrix(PRU_model_symb_df)
+
+x_pru_symb <- PRU_model_data_matrix[, -1]
+y_pru_symb <- PRU_model_data_matrix[, 1]
+lasso_PRU_symb <- cv.glmnet(x = x_pru_symb, y = y_pru_symb)
+coef(lasso_PRU_symb)
+```
+
+I don't like this. trying to change the lambda:
+
+```{r}
+# Perform cross-validated Lasso regression
+lasso_PRU_symb <- cv.glmnet(x = x_pru_symb, y = y_pru_symb, alpha = 1)
+
+# Extract coefficients at the best lambda
+best_lambda <- lasso_PRU_symb$lambda.min
+coef(lasso_PRU_symb, s = best_lambda)
+```
+
+still nothing!!!
+
+```{r}
+elastic_net_PRU_symb <- cv.glmnet(x = x_pru_symb, y = y_pru_symb, alpha = 0.5)
+best_lambda_en <- elastic_net_PRU_symb$lambda.min
+coef(elastic_net_PRU_symb, s = best_lambda_en)
+```
+
+Even nothing with elastic net??
+
+Unfortunately stepwise regression does not work with random effects (or at least the package I have does not)
+
+```{r}
+#step 1:
+data = na.omit(model_data %>% filter(Species == "Porites rus"))
+# Step 2: Fit the initial model
+initial_model <- lmer(
+  FSC.Events_per_cm_2 ~ Low_Tide_Mean_Phosphate_umolL_scaled + Low_Tide_Mean_Silicate_umolL_scaled + Low_Tide_Mean_NN_umolL_scaled +
+    Low_Tide_Mean_NNP_umolL_scaled + (1 | Genotype) + (1 | Cage_Uncaged),
+  data = data
+)
+
+# Step 3: Perform stepwise regression
+#stepwise_model <- stepAIC(initial_model, direction = "backward")
+
+# View the summary of the stepwise regression model
+#summary(stepwise_model)
+```
+
+
+
+```{r}
+
+multivariate_PRU_symb <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Phosphate_umolL_scaled + 
+  (1 | Genotype) + (1 | Cage_Uncaged),
+  data = PRU_model_data
+)
+summary(multivariate_PRU_symb)
+car::Anova(multivariate_PRU_symb)
+plot(allEffects(multivariate_PRU_symb))
+```
+

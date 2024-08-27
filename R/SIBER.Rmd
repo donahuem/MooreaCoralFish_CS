@@ -1,0 +1,240 @@
+---
+title: "SIBER"
+author: "Callie Stephenson"
+date: "2024-06-18"
+output: html_document
+---
+intro to SIBER: https://cran.r-project.org/web/packages/SIBER/vignettes/Introduction-to-SIBER.html
+```{r}
+  # install.packages("devtools") # install if necessary
+  # install.packages("devtools") # install if necessary
+  #devtools::install_github("andrewljackson/SIBER@master",
+  #build_vignettes = TRUE)
+  library(SIBER)
+```
+
+```{r}
+generateSiberData()
+rm(list=ls())# remove previously loaded items from the current environment and remove previous graphics.
+graphics.off()
+
+data("demo.siber.data")
+# Load your data
+SI <- read.csv("../data/SI_Tidy.csv")
+demo.siber.data <- SI[, c("δ13C", "δ15N", "HS", "Species")]
+
+rus.demo.siber.data <- demo.siber.data %>% 
+  filter(Species == "Porites rus")
+acuta.demo.siber.data <- demo.siber.data %>% 
+  filter(Species == "Pocillopora acuta")
+
+# Rename the columns
+colnames(demo.siber.data) <- c("iso1", "iso2", "group", "community")
+colnames(rus.demo.siber.data) <- c("iso1", "iso2", "group", "community")
+colnames(acuta.demo.siber.data) <- c("iso1", "iso2", "group", "community")
+
+# Create the SIBER object
+siber.example <- createSiberObject(demo.siber.data)
+
+
+# create the siber object
+siber.example <- createSiberObject(demo.siber.data)
+rus.siber.example <- createSiberObject(rus.demo.siber.data)
+acuta.siber.example <- createSiberObject(acuta.demo.siber.data)
+```
+
+Ellipses are drawn for each group independently with ellipses = T. These ellipses can be made to be maximum likelihood standard ellipses by setting p = NULL, or can be made to be prediction ellipses that contain approximately p proportion of data. For example, p = 0.95 will draw an ellipse that encompasses approximately 95% of the data. The parameter n determines how many points are used to make each ellipse and hence how smooth the curves are.
+
+Convex hulls are draw around each group independently with group.hulls = T.
+
+
+```{r}
+community.hulls.args <- list(col = 1, lty = 1, lwd = 1)
+group.ellipses.args  <- list(n = 100, p.interval = 0.95, lty = 1, lwd = 2)
+group.hulls.args     <- list(lty = 2, col = "black")
+
+par(mfrow=c(1,2))
+plotSiberObject(rus.siber.example,
+                  ax.pad = 2, 
+                  hulls = F, community.hulls.args = community.hulls.args, 
+                  ellipses = T, group.ellipses.args = group.ellipses.args,
+                  group.hulls = F, group.hulls.args = group.hulls.args,
+                  bty = "L",
+                  iso.order = c(1,2),
+                  xlab = expression({delta}^13*C~'permille'),
+                  ylab = expression({delta}^15*N~'permille'),
+                main = "Rus SIBER"
+                  )
+
+legend("topright", legend = levels(rus.siber.example$group.names[[1]]), 
+       col = 1:length(levels(rus.siber.example$group.names[[1]])), 
+       pch = 16, title = "Groups")
+
+plotSiberObject(acuta.siber.example,
+                  ax.pad = 2, 
+                  hulls = F, community.hulls.args = community.hulls.args, 
+                  ellipses = T, group.ellipses.args = group.ellipses.args,
+                  group.hulls = F, group.hulls.args = group.hulls.args,
+                  bty = "L",
+                  iso.order = c(1,2),
+                  xlab = expression({delta}^13*C~'permille'),
+                  ylab = expression({delta}^15*N~'permille'),
+                main = "Acuta SIBER"
+                  )
+
+legend("topright", legend = levels(rus.siber.example$group.names[[1]]), 
+       col = 1:length(levels(rus.siber.example$group.names[[1]])), 
+       pch = 16, title = "Groups")
+
+```
+
+One feature of the Standard Ellipse is that it contains approximately 40% of the data. SIBER now includes code to scale this ellipse so that it contains approximately any % of the data you wish. Additionally, the ellipse can be scaled so that it represents a % confidence ellipse of the bivariate means (rather than of the data). We create the bi-plot again here and this time add the additional ellipses overlayed on the basic plot that this time omits group hulls and group standard ellipses.
+
+```{r}
+par(mfrow=c(1,1))
+
+community.hulls.args <- list(col = 1, lty = 1, lwd = 1)
+group.ellipses.args  <- list(n = 100, p.interval = 0.95, lty = 1, lwd = 2)
+group.hull.args      <- list(lty = 2, col = "grey20")
+
+# this time we will make the points a bit smaller by 
+# cex = 0.5
+plotSiberObject(siber.example,
+                  ax.pad = 2, 
+                  hulls = F, community.hulls.args, 
+                  ellipses = F, group.ellipses.args,
+                  group.hulls = F, group.hull.args,
+                  bty = "L",
+                  iso.order = c(1,2),
+                  xlab=expression({delta}^13*C~'permille'),
+                  ylab=expression({delta}^15*N~'permille'),
+                  cex = 0.5
+                  )
+# You can add more ellipses by directly calling plot.group.ellipses()
+# Add an additional p.interval % prediction ellilpse
+plotGroupEllipses(siber.example, n = 100, p.interval = 0.95,
+                    lty = 1, lwd = 2)
+
+# or you can add the XX% confidence interval around the bivariate means
+# by specifying ci.mean = T along with whatever p.interval you want.
+#plotGroupEllipses(siber.example, n = 100, p.interval = 0.95, ci.mean = T,
+#                    lty = 1, lwd = 2)
+```
+
+```{r}
+group.ML <- groupMetricsML(rus.siber.example)
+print(group.ML)
+
+group.ML <- groupMetricsML(acuta.siber.example)
+print(group.ML)
+
+group.ML <- groupMetricsML(siber.example)
+print(group.ML)
+```
+
+Whether your intended analysis is to compare isotopic niche width among groups, or among communities, the initial step is to fit Bayesian multivariate normal distributions to each group in the dataset. The decision as to whether you then want to compare the area of the ellipses among groups, or any / all of the 6 Layman metrics comes later.
+
+These multivariate normal distributions are fitted using the jags software run via the package rjags. This method relies on an iterated Gibbs Sampling technique and some information on the length, number and iterations of sampling chains is required. Additionally, the prior distributions for the parameters need to be specified. In SIBER, these are bundled into two list objects: parms which holds the parameters defining how the sampling algorithm is to run; and priors which holds information on the prior distributions of the parameters to be estimated. Typically, the priors are left vague and you should use these same values in your own analysis. Since the data are z-scored internally before the models are fitted to the data, the expected means are inherently close to zero, and the marginal variances close to one. This greatly aids the jags fitting process.
+
+After calling siberMVN() you will see output in the command window indicating that the jags models are being fitted, one block of output for each group in your dataset. A subset of these blocks are shown below.
+
+```{r}
+# options for running jags
+parms <- list()
+parms$n.iter <- 2 * 10^4   # number of iterations to run the model for
+parms$n.burnin <- 1 * 10^3 # discard the first set of values
+parms$n.thin <- 10     # thin the posterior by this many
+parms$n.chains <- 2        # run this many chains
+
+# define the priors
+priors <- list()
+priors$R <- 1 * diag(2)
+priors$k <- 2
+priors$tau.mu <- 1.0E-3
+
+# fit the ellipses which uses an Inverse Wishart prior
+# on the covariance matrix Sigma, and a vague normal prior on the 
+# means. Fitting is via the JAGS method.
+ellipses.posterior <- siberMVN(siber.example, parms, priors)
+```
+
+When comparing individual groups with each other, be it within a single community, or groups among communities, the Standard Ellipse Area (SEA) is the recommended method. Since the multivariate normal distributions have already been fitted to each group, it only remains to calculate the SEA on the posterior distribution of covariance matrix for each group, thereby yielding the Bayesian SEA or SEA-B. We can also use the summary statistics we calculated earlier to add the maximum likelihood estimates of SEA-c to the Bayesian estimates.
+
+Credible intervals can be extracted by calling the function hdr from the hdrcde package.
+
+```{r}
+# The posterior estimates of the ellipses for each group can be used to
+# calculate the SEA.B for each group.
+SEA.B <- siberEllipses(ellipses.posterior)
+
+siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
+                xlab = c("Community | Group"),
+                ylab = expression("Standard Ellipse Area " ('permille' ^2) ),
+                bty = "L",
+                las = 1,
+                main = "SIBER ellipses on each group"
+                )
+
+# Add red x's for the ML estimated SEA-c
+points(1:ncol(SEA.B), group.ML[3,], col="red", pch = "x", lwd = 2)
+```
+
+
+One can calculate the overlap between two (or more) ellipses. In the first instance, this overlap is simply the area, in units of per mil squared, contained by the shape that lies within the overlapping region. This overlap is most easily calculated by using the SEAc of each ellipse.
+
+The overlap between the SEAc for groups 1.2 and 1.3 is given by:
+
+```{r}
+overlap.G1.2.G1.3 <- maxLikOverlap("Pocillopora acuta.host", "Pocillopora acuta.symb", acuta.siber.example, p = 0.95, n =)
+
+prop.of.first <- as.numeric(overlap.G1.2.G1.3["overlap"] / overlap.G1.2.G1.3["area.1"])
+print(prop.of.first)
+```
+
+```{r}
+prop.of.second <- as.numeric(overlap.G1.2.G1.3["overlap"] / overlap.G1.2.G1.3["area.2"])
+print(prop.of.second)
+```
+
+```{r}
+prop.of.both <- as.numeric(overlap.G1.2.G1.3["overlap"] / (overlap.G1.2.G1.3["area.1"] + overlap.G1.2.G1.3["area.2"]))
+print(prop.of.both)
+```
+
+Same but for porites rus:
+```{r}
+overlap.G1.2.G1.3 <- maxLikOverlap("Porites rus.host", "Porites rus.symb", rus.siber.example, p = 0.95, n =)
+
+prop.of.first <- as.numeric(overlap.G1.2.G1.3["overlap"] / overlap.G1.2.G1.3["area.1"])
+print(prop.of.first)
+```
+
+```{r}
+prop.of.second <- as.numeric(overlap.G1.2.G1.3["overlap"] / overlap.G1.2.G1.3["area.2"])
+print(prop.of.second)
+```
+
+```{r}
+prop.of.both <- as.numeric(overlap.G1.2.G1.3["overlap"] / (overlap.G1.2.G1.3["area.1"] + overlap.G1.2.G1.3["area.2"]))
+print(prop.of.both)
+```
+
+
+
+A problem with this simple overlap calculation is that it yields a point-estimate of overlap based on the maximum likelihood estimated SEA_c. One can instead calculate a distribution of overlap based on the posterior distributions of the fitted ellipses. It can be a bit slow to calculate this overlap, so you may want to drop the number of draws if your computer is slow.
+
+```{r}
+bayes.overlap.G2.G3 <- bayesianOverlap("Porites rus.host", "Porites rus.symb", ellipses.posterior, 
+                                       draws = 20, p.interval = 0.95,
+                                       n = 360)
+mean(bayes.overlap.G2.G3$overlap / (bayes.overlap.G2.G3$area1 + bayes.overlap.G2.G3$area2))
+```
+
+```{r}
+bayes.overlap.G2.G3 <- bayesianOverlap("Pocillopora acuta.host", "Pocillopora acuta.symb", ellipses.posterior, 
+                                       draws = 20, p.interval = 0.95,
+                                       n = 360)
+mean(bayes.overlap.G2.G3$overlap / (bayes.overlap.G2.G3$area1 + bayes.overlap.G2.G3$area2))
+```
+
+

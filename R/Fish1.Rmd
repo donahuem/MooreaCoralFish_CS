@@ -11,29 +11,193 @@ library(here)
 library(fishualize)
 library(ggplot2)
 library(vegan)
+library(viridis)
 ```
 
 ```{r data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/MaxN.csv")
+explan<- read.csv("data/explanatory_all_wide.csv")
 ```
+
+TIDY DATA:
+```{r}
+block_count_per_location <- maxn %>%
+  group_by(Pin, On.Adjacent) %>%
+  summarise(num_blocks = n_distinct(Block))
+
+subset_maxn <- maxn %>%
+  filter(!Pin == "13" & On.Adjacent == "Adjacent") %>% 
+  group_by(Pin, On.Adjacent) %>%
+  filter(Block %in% sample(unique(Block), 4, replace = FALSE)) %>%
+  ungroup()
+
+subset_block_count_per_location <- subset_maxn %>%
+  group_by(Pin, On.Adjacent) %>%
+  summarise(num_blocks = n_distinct(Block))
+```
+
+Use 4 blocks from each sampling location. This uses 4 from On and 4 from Adjacent, so 8 total for each pin.
 
 Linda rec: make a plot that is ordered by the most abundant fish at site 17, then see if others do the same
 
-```{r, fig.width=15,fig.height=20}
-maxn1 <- maxn %>%
-  mutate(Species = factor(Species, levels = reorder_within(Species, MaxN, Pin == 17)))
+```{r average maxn at each pin}
+maxn_avg <- subset_maxn %>%
+  group_by(Pin, Species) %>%
+  summarize(avg_MaxN = mean(MaxN, na.rm = TRUE)) 
 
-plot1 <- ggplot(maxn, aes(x=Species, fill=MaxN))+
-  geom_bar()+
-  facet_wrap(~Pin) +
-  coord_flip()
-
-ggsave("fish_explore.png", plot1, width = 15, height = 30)
+maxn_avg %>%
+  ggplot(aes(x = Species, y = avg_MaxN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pin) +
+  labs(y = "Average MaxN", x = "Block", title = "Average MaxN of Each Species Across Blocks by Pin") +
+  coord_flip()+
+  theme_minimal()
 ```
 
-NMDS:
+```{r same but only top 20 species}
+# Step 1: Calculate the overall average MaxN for each species
+species_avg <- maxn_avg %>%
+  group_by(Species) %>%
+  summarize(overall_avg_MaxN = mean(avg_MaxN, na.rm = TRUE)) %>%
+  arrange(desc(overall_avg_MaxN))
 
-```{r}
+# Step 2: Identify the top 20 species based on the overall average MaxN
+top_species <- species_avg %>%
+  top_n(20, overall_avg_MaxN) %>%
+  pull(Species)
+
+maxn_avg_top <- maxn_avg %>%
+  filter(Species %in% top_species)
+
+maxn_avg_top %>%
+  ggplot(aes(x = Species, y = avg_MaxN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pin) +
+  labs(y = "Average MaxN", x = "Block", title = "Average MaxN of Each Species Across Blocks by Pin") +
+  coord_flip()+
+  theme_minimal()
+```
+
+now let's order it by pin 14
+```{r pin 14 most common}
+# Step 1: Create a new column for avg_MaxN at Pin 14
+pin14_avg <- maxn_avg_top %>%
+  filter(Pin == 14) %>%
+  dplyr::select(Species, avg_MaxN) %>%
+  rename(MaxN_Pin14 = avg_MaxN)
+
+# Step 2: Add MaxN_Pin14 to the original dataframe and calculate overall average MaxN
+maxn_avg_top <- maxn_avg_top %>%
+  left_join(pin14_avg[,c("Species","MaxN_Pin14")], by = "Species") %>%
+  group_by(Species) %>%
+  mutate(overall_avg_MaxN = mean(avg_MaxN, na.rm = TRUE)) %>%
+  ungroup()
+
+# Step 3: Define species order based on MaxN_Pin14 and overall_avg_MaxN
+species_order <- maxn_avg_top %>%
+  # Replace NA in MaxN_Pin14 with a very low value to ensure they come last
+  mutate(MaxN_Pin14 = ifelse(is.na(MaxN_Pin14), -Inf, MaxN_Pin14)) %>%
+  arrange(desc(MaxN_Pin14), desc(overall_avg_MaxN)) %>%
+  pull(Species) %>%
+  unique()
+
+# Step 4: Reorder species factor levels
+maxn_avg_top <- maxn_avg_top %>%
+  mutate(Species = factor(Species, levels = species_order))
+
+# Step 5: Create the plot with the reordered species
+p1 <-maxn_avg_top %>%
+  ggplot(aes(x = Species, y = avg_MaxN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pin) +
+  labs(y = "Average MaxN", x = "Species", title = "Average Abundance of the Most Common 20 Species Across Sampling Locations") +
+  coord_flip() +  # Flip coordinates to have species names on y-axis
+  theme_linedraw()+ 
+  theme(plot.title = element_text(size=9))
+
+ggsave(filename = "output/most_common_fish.png", p1, height = 10, width = 5)
+```
+
+Ok, let's order this by distance to seep:
+
+```{r by dist to seep}
+explan <- explan %>%
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+
+maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL")])
+
+pin_order <- maxn_explan %>%
+  distinct(Pin, dist_to_seep_m) %>%
+  filter(Pin != 13) %>%  # Exclude Pin 13
+  arrange(dist_to_seep_m) %>%
+  pull(Pin)
+
+maxn_explan <- maxn_explan %>%
+  mutate(Pin = factor(Pin, levels = pin_order)) 
+
+maxn_explan %>%
+  ggplot(aes(x = Species, y = avg_MaxN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pin) +
+  labs(y = "Average MaxN", x = "Species", title = "Average Abundance of Each Species at Sampling Locations") +
+  coord_flip()+
+  theme_minimal()
+```
+
+
+```{r by dist to silicate}
+explan <- explan %>%
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+
+maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL")])
+
+pin_order <- maxn_explan %>%
+  distinct(Pin, Low_Tide_Mean_Silicate_umolL) %>%
+#  filter(Pin != 13) %>%  # Exclude Pin 13
+  arrange(Low_Tide_Mean_Silicate_umolL) %>%
+  pull(Pin)
+
+maxn_explan <- maxn_explan %>%
+  mutate(Pin = factor(Pin, levels = pin_order)) 
+
+maxn_explan %>%
+  ggplot(aes(x = Species, y = avg_MaxN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pin) +
+  labs(y = "Average MaxN", x = "Species", title = "Average Abundance of Each Species at Sampling Locations") +
+  coord_flip()+
+  theme_minimal()
+```
+
+```{r by pulse pc 1}
+explan <- explan %>%
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+
+maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL")])
+
+pin_order <- maxn_explan %>%
+  distinct(Pin, pulse_pc1) %>%
+#  filter(Pin != 13) %>%  # Exclude Pin 13
+  arrange(pulse_pc1) %>%
+  pull(Pin)
+
+maxn_explan <- maxn_explan %>%
+  mutate(Pin = factor(Pin, levels = pin_order)) 
+
+maxn_explan %>%
+  ggplot(aes(x = Species, y = avg_MaxN)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Pin) +
+  labs(y = "Average MaxN", x = "Species", title = "Average Abundance of Each Species at Sampling Locations") +
+  coord_flip()+
+  theme_minimal()
+```
+
+
+NMDS Code from Linda:
+
+```{r wide data}
 maxn_sum <- maxn %>%
   group_by(Pin, On.Adjacent, Block, Species) %>%
   summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
@@ -71,7 +235,7 @@ mat.dis_fish <- vegdist(Fish_com,method="bray")
 ```{r}
 set.seed(123)
 
-nmds = metaMDS(mat.dis_fish,k=2, trymax=100, distance = "bray")
+nmds = metaMDS(mat.dis_fish,k=2, trymax=500, distance = "bray")
 ##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear..
 stressplot(nmds) 
 nmds

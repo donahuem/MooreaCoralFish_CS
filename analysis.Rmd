@@ -32,6 +32,7 @@ library(curl) #curl
 library(gridExtra)
 library(vegan) #pcoa
 library(car)
+library(MASS)
 ```
 
 
@@ -450,7 +451,79 @@ multivariate_PAC_growth <- lmer(Percent_Change ~ poly(sd_pH_scaled,2) + poly(Min
 #summary(multivariate_PAC_growth)
 car::Anova(multivariate_PAC_growth)
 plot(allEffects(multivariate_PAC_growth))
+car::vif(multivariate_PAC_growth)
+
+
 ```
+
+```{r reduced multivariate}
+multivariate_PAC_growth_reduced <- lmer(Percent_Change ~ poly(Minimum_Salinity_scaled,2) +
+                                 poly(Low_Tide_Mean_Phosphate_umolL_scaled,2) + 
+#                                  poly(shore_dist_m,2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+
+#summary(multivariate_PAC_growth)
+car::Anova(multivariate_PAC_growth_reduced)
+plot(allEffects(multivariate_PAC_growth_reduced))
+# car::vif(multivariate_PAC_growth)
+
+
+```
+```{r stepwise_regression, echo=FALSE, message=FALSE, warning=FALSE, results='hide'}
+# Ridge/Lasso/Elastic_net
+# install.packages('glmnet')
+# library(glmnet)
+# # Remove the Pin_Number and Species columns
+# PAC_model_data <- PAC_model_data %>% dplyr::select(-Pin_Number, -Species)
+# 
+# # Convert Genotype and Cage_Uncaged to factors if they are not already
+# PAC_model_data$Genotype <- as.factor(PAC_model_data$Genotype)
+# PAC_model_data$Cage_Uncaged <- as.factor(PAC_model_data$Cage_Uncaged)
+# 
+# # Create dummy variables
+# genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_model_data)
+# cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_model_data)
+# 
+# # Combine the dummy variables with the original data frame (excluding the original columns)
+# PAC_model_data <- cbind(PAC_model_data, genotype_dummies, cage_uncaged_dummies)
+# PAC_model_data <- PAC_model_data[, !names(PAC_model_data) %in% c("Genotype", "Cage_Uncaged")]
+# 
+# PAC_model_percent_change_df <- PAC_model_data %>%
+#   dplyr::select(-FSC.Events_per_cm_2, -FSC.Events_per_g_dry_weight)
+# 
+# PAC_model_data_matrix <- as.matrix(PAC_model_percent_change_df)
+# 
+# x_pac_percent_change <- PAC_model_data_matrix[, -1]
+# y_pac_percent_change <- PAC_model_data_matrix[, 1]
+# lasso_PAC_growth <- cv.glmnet(x = x_pac_percent_change, y = y_pac_percent_change)
+# coef(lasso_PAC_growth)
+# 
+# #summary(multivariate_PAC_growth)
+# car::Anova(multivariate_PAC_growth_reduced)
+# plot(allEffects(multivariate_PAC_growth_reduced))
+# car::vif(multivariate_PAC_growth)
+
+# Stepwise regression
+
+# Step 2: Fit the initial model
+initial_model <- lm(Percent_Change ~ ., data = PAC_model_data)
+
+# Step 3: Perform stepwise regression
+stepwise_model <- step(initial_model, direction = "both")
+
+# View the summary of the stepwise regression model
+summary(stepwise_model)
+
+cor(PAC_model_data$FSC.Events_per_cm_2, PAC_model_data$Percent_Change)
+ggplot(aes(x=log10(FSC.Events_per_cm_2), y = Percent_Change), data = PAC_model_data)+
+  geom_point()+
+  geom_smooth()
+
+```
+
+
+
+
 Ok, so of the top 3 models, two explain different parts of the variation. pH variability and minimum salinity (a conservative SGD tracer, but also what Katie's paper found). Both unimodal, which is sick. 
 
 ```{r multivariate dredge}
@@ -464,6 +537,7 @@ multivariate_PAC_growth <- lmer(Percent_Change ~
                                  na.action = na.pass)
 
 Anova(multivariate_PAC_growth)
+summary(multivariate_PAC_growth)
 plot(allEffects(multivariate_PAC_growth))
 
 multivariate_PAC_growth_dredge <- dredge(multivariate_PAC_growth, trace = 2)
@@ -501,18 +575,28 @@ grid.arrange(plot1, plot2, plot3, nrow = 1)
 
 ```
 
-```{r, fig.width=15}
+```{r, fig.width=15, warning=FALSE}
 parameters <- c("sd_pH", "Minimum_Salinity", "Low_Tide_Mean_Phosphate_umolL")
+custom_labels <- c("A" = "Uncaged", "B" = "Cage Control", "C" = "Caged")
 
 PAC_growth_plot_data_long_prep <- PAC_plot_data[,c("Percent_Change", parameters)]
 PAC_growth_plot_data_long <- pivot_longer(PAC_growth_plot_data_long_prep, 
                                     cols = parameters,
                                     names_to = "Parameter", 
                                     values_to = "Value")
-combined_plot <- ggplot(data = PAC_growth_plot_data_long, aes(x = Value, y = Percent_Change)) +
-  geom_point() +
+
+plot_PAC_growth_plot_data_long <- left_join(PAC_growth_plot_data_long, response_data[,c("Percent_Change", "Cage_Uncaged", "Genotype")])
+
+plot_PAC_growth_plot_data_long$Source_Colony <- as.factor(as.integer(plot_PAC_growth_plot_data_long$Genotype))
+
+combined_plot <- ggplot(data = plot_PAC_growth_plot_data_long, aes(x = Value, y = Percent_Change)) +
+  geom_point(aes(shape = Source_Colony, color = Cage_Uncaged)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "#265588") +
-  labs(x = "", y = "Percent Change in Buoyant Weight") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", labels = custom_labels) +
+  labs(x = "", y = "Percent Change in Buoyant Weight",
+    shape = "Source Colony",
+    color = "Cage Treatment"  # New legend title for the color scale
+  ) +
   facet_wrap(~ Parameter, scales = "free_x", nrow = 1) +
   theme_linedraw() +
   theme(strip.background = element_rect(fill = "#265588"))
@@ -525,13 +609,71 @@ combined_plot <- combined_plot +
   theme(strip.background = element_rect(fill = "#265588")) +
   # Updating facet labels
   labs(title = "") +
-  theme(strip.text.x = element_text(size = 12, face = "bold"),
-        strip.text.y = element_text(size = 12, face = "bold")) +
+  theme(strip.text.x = element_text(size = 10, face = "bold"),
+        strip.text.y = element_text(size = 10, face = "bold")) +
   facet_wrap(~ Parameter, scales = "free_x", nrow = 1, labeller = labeller(Parameter = parameter_titles))
 
 # Print the combined plot
 print(combined_plot)
 ggsave(filename = "output/PAC_growth_multivariate_effects_plot.png", plot = combined_plot, width = 10, height = 5)
+```
+
+```{r}
+parameters <- c("sd_pH", "Minimum_Salinity", "Low_Tide_Mean_Phosphate_umolL")
+custom_labels <- c("A" = "Uncaged", "B" = "Cage Control", "C" = "Caged")
+
+PAC_growth_plot_data_long_prep <- PAC_plot_data[,c("Percent_Change", parameters)]
+PAC_growth_plot_data_long <- pivot_longer(PAC_growth_plot_data_long_prep, 
+                                          cols = parameters,
+                                          names_to = "Parameter", 
+                                          values_to = "Value")
+
+plot_PAC_growth_plot_data_long <- left_join(PAC_growth_plot_data_long, response_data[,c("Percent_Change", "Cage_Uncaged", "Genotype")], relationship = "many-to-many")
+
+plot_PAC_growth_plot_data_long$Source_Colony <- as.factor(as.integer(plot_PAC_growth_plot_data_long$Genotype))
+```
+
+```{r}
+parameter_titles <- c("sd_pH" = "Standard deviation of pH",
+                      "Minimum_Salinity" = "Minimum Salinity",
+                      "Low_Tide_Mean_Phosphate_umolL" = "Low Tide Mean Phosphate (μmol/L)")
+
+models1 <- data.frame(
+   Parameter = c("sd_pH", "Minimum_Salinity", "Low_Tide_Mean_Phosphate_umolL"),
+   p_value = c(0.00023, 0.00083, 0.0077),
+   R2c = c(0.407, 0.270, 0.352)
+ )
+
+combined_plot <- ggplot(data = plot_PAC_growth_plot_data_long, aes(x = Value, y = Percent_Change)) +
+  geom_point(aes(shape = Source_Colony, color = Cage_Uncaged)) +
+  geom_smooth(data = subset(plot_PAC_growth_plot_data_long, Parameter == "sd_pH"),
+                method = "lm", formula = y ~ x, color = "#265588") +
+  geom_smooth(data = subset(plot_PAC_growth_plot_data_long, Parameter != "sd_pH"),
+              method = "lm", formula = y ~ poly(x, 2), color = "#265588") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", labels = custom_labels) +
+  labs(x = "", y = "Percent Change in Buoyant Weight",
+       shape = "Source Colony",
+       color = "Cage Treatment") +
+  facet_wrap(~ Parameter, scales = "free_x", nrow = 1, labeller = labeller(Parameter = parameter_titles), strip.position= "bottom") +
+  theme_linedraw() +
+ theme(strip.placement = "outside",
+       strip.background = element_rect(fill = "white", color = "white"),
+       strip.text.x = element_text(size = 7.9, color = "black"),
+       axis.text.x = element_text(hjust = 1))
+```
+
+```{r}
+# Assuming combined_plot is defined as per your requirements
+combined_plot <- combined_plot +
+  geom_text(data = models1,
+            aes(label = paste("p =", formatC(p_value, format = "e", digits = 2),
+                              "\nR²c =", formatC(R2c, digits = 3)),
+                x = Inf, y = -Inf), # x, y are set to Inf and -Inf to place text in lower right
+            hjust = 1, vjust = -0.3, size = 3, color = "black", inherit.aes = FALSE)
+
+print(combined_plot)
+
+#ggsave(filename = "output/PAC_growth_multivariate_effects_plot1.png", plot = combined_plot, width = 10, height = 5)
 ```
 
 
@@ -606,16 +748,25 @@ PRU_sym_gm_model_results[order(PRU_sym_gm_model_results$AICc),]
 ```
 
 ```{r PLOTTING IT}
+custom_labels <- c("A" = "Uncaged", "B" = "Cage Control", "C" = "Caged")
 pru_symb <- ggplot(data = PRU_plot_data, aes(x = Low_Tide_Mean_Phosphate_umolL, y = log10(FSC.Events_per_cm_2))) +
-  geom_point() +
+  geom_point(aes(color = Cage_Uncaged, shape = Genotype)) +
   geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "#265588") +
+  scale_color_fish_d(option = "Coryphaena_hippurus",labels = custom_labels) +
   labs(x = expression("Low tide mean phosphate" ~ (μmol/L)),
        y = expression("Log"[10] ~ " Symbiodiniaceae cells per " ~ cm^2)) +
-  theme_linedraw()
+  theme_linedraw()+
+  labs(
+    shape = "Source Colony",
+    color = "Cage Treatment"  # New legend title for the color scale
+  ) +
+  annotate("text", x = Inf, y = 3.5, 
+           label = paste("p =", "2.16e-04", "\nR²c =", "0.32"),
+           hjust = 1.2, vjust = .6, size = 4)
 
 pru_symb
 
-#ggsave(filename = "output/PRU_symb_effects_plot.png", plot = pru_symb, width = 5, height = 4)
+ggsave(filename = "output/PRU_symb_effects_plot.png", plot = pru_symb, width = 7, height = 3)
 ```
 
 ## ISOTOPES
@@ -665,12 +816,26 @@ From this, it looks like there is more heterotrophy going on in acuta than in ru
 ```{r}
 SI_join %>% 
   filter(!Placement_Code == "T0") %>% 
+  filter(!HS == "host") %>% 
+  ggplot(aes(y = δ15N, x = Maximum_Silicate_umolL)) +
+  geom_point() +
+#  geom_smooth(method = "lm") +
+#  geom_text(aes(label = Pin_Number)) +
+  facet_wrap(~Species)
+```
+
+
+```{r}
+SI_join %>% 
+  filter(!Placement_Code == "T0") %>% 
   ggplot(aes(y = Δ13C, x = Maximum_Silicate_umolL)) +
   geom_point() +
   geom_hline(yintercept = 0, linetype = "dashed", color = "steelblue2") +
+  geom_hline(yintercept = 0.2, linetype = "dashed", color = "darkblue") +
+  geom_hline(yintercept = -0.2, linetype = "dashed", color = "darkblue") +
 #  geom_smooth(method = "lm") +
 #  geom_text(aes(label = Pin_Number)) +
-  facet_wrap(~Species, scales = "free")
+  facet_wrap(~Species)
 ```
 
 ```{r}
@@ -681,7 +846,7 @@ SI_join %>%
   geom_hline(yintercept = 0, linetype = "dashed", color = "steelblue2") +
 #  geom_smooth(method = "lm") +
 #  geom_text(aes(label = Pin_Number)) +
-  facet_wrap(~Species, scales = "free")
+  facet_wrap(~Species)
 ```
 
 This does not support increased heterotrophy due to SGD. 
@@ -707,15 +872,17 @@ Looks like in acuta and in rus, there's a lot more heavy nitrogen in the host th
 SI_join %>%   
   filter(!Placement_Code == "T0") %>% 
   filter(HS == "symb") %>% 
-  ggplot(aes(x = δ15N, y = log10(del15N))) +
-  geom_point() +
+  ggplot(aes(x = δ15N, y = del15N)) +
+#  geom_point() +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
 #  geom_smooth(method = "lm") +
   labs(x = "Coral Symbiont Bulk δ15N", y = "Turbinaria Bulk δ15N") +
-#  geom_text(aes(label = Pin_Number)) +
+  geom_text(aes(label = Pin_Number)) +
   facet_wrap(~Species, scales = "free")
 ```
+
 Acuta looks like it might be signiciant (rus definitely not)
+
 ```{r}
 Acuta <- SI_join %>%   
   filter(!Placement_Code == "T0") %>% 
@@ -737,9 +904,8 @@ nitrate_parameters <- c("Maximum_NN_umolL", "Minimum_NN_umolL", "Low_Tide_Mean_N
 
 for (parameter in nitrate_parameters) {
   # Filter data for the current species and only caged
-  species_data <- SI_data_wide %>%
-    filter(Species == "Porites rus") %>% 
-    filter(HS == "host")
+  species_data <- SI_join %>%
+    filter(Species == "Porites rus")
   
   # Create plot for the current species
   plot_list[[parameter]] <- species_data %>%
@@ -761,7 +927,7 @@ plot_list <- list()
 
 for (parameter in nitrate_parameters) {
   # Filter data for the current species and only caged
-  species_data <- SI_data_wide %>%
+  species_data <- SI_join %>%
     filter(Species == "Pocillopora acuta") %>% 
     filter(HS == "host")
   
@@ -784,7 +950,7 @@ plot_list <- list()
 
 for (parameter in nitrate_parameters) {
   # Filter data for the current species and only caged
-  species_data <- SI_data_wide %>%
+  species_data <- SI_join %>%
     filter(Species == "Pocillopora acuta")
   
   # Create plot for the current species
@@ -801,6 +967,7 @@ grid.arrange(grobs = plot_list, ncol = 2)
 
 ### Exploring plots of symbionts and growth vs. isotope values
 ```{r}
+SI_data_wide <- SI_join
 SI_data_wide <- left_join(SI_data_wide, response_data[,c("Placement_Code", "FSC.Events_per_cm_2")])
 SI_data_wide$log10symbcount <- log10(SI_data_wide$FSC.Events_per_cm_2)
 ```
@@ -1039,3 +1206,4 @@ PRU_growth_caged_only <- PRU_model_scaled_data_long %>%
 
 PRU_growth_caged_only[order(PRU_growth_caged_only$AICc),]
 ```
+
