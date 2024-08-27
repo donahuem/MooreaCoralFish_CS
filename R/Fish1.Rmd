@@ -4,6 +4,11 @@ author: "Callie Stephenson"
 date: "2024-03-28"
 output: html_document
 ---
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
 ```{r packages, message=FALSE}
 library(dplyr)
 library(readr)
@@ -12,7 +17,9 @@ library(fishualize)
 library(ggplot2)
 library(vegan)
 library(viridis)
+library(tidyr)
 ```
+
 
 ```{r data}
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
@@ -20,14 +27,19 @@ maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/da
 explan<- read.csv("data/explanatory_all_wide.csv")
 ```
 
-TIDY DATA:
-```{r}
+### TIDY DATA:
+
+First chunk of code subsets to only using 8 blocks per survey location, 4 from an 'on' and 4 from an 'adjacent'. I also remove pins where camera malfunctions made this not possible (Pin 13 and Pin 2).
+
+```{r subset to 4 blocks per location}
 block_count_per_location <- maxn %>%
   group_by(Pin, On.Adjacent) %>%
   summarise(num_blocks = n_distinct(Block))
 
+set.seed(123)
 subset_maxn <- maxn %>%
-  filter(!(Pin == "13" & On.Adjacent == "Adjacent")) %>% 
+  filter(!(Pin == "13")) %>% 
+  filter(!(Pin == "2")) %>% 
   group_by(Pin, On.Adjacent) %>%
   filter(Block %in% sample(unique(Block), 4, replace = FALSE)) %>%
   ungroup()
@@ -35,16 +47,73 @@ subset_maxn <- maxn %>%
 subset_block_count_per_location <- subset_maxn %>%
   group_by(Pin, On.Adjacent) %>%
   summarise(num_blocks = n_distinct(Block))
+
+#Check that everybody has 4 blocks 2 times:
+#table(subset_block_count_per_location$num_blocks, subset_block_count_per_location$Pin)
 ```
 
-Use 4 blocks from each sampling location. This uses 4 from On and 4 from Adjacent, so 8 total for each pin.
+Since we could count some species as distinct individuals by life stages, I have combined those counts together here:
 
-Linda rec: make a plot that is ordered by the most abundant fish at site 17, then see if others do the same
+```{r combining life stages}
+subset_maxn_combined_life_stages <- subset_maxn %>%
+  group_by(Pin, On.Adjacent, Block, Species) %>%
+  summarise(MaxN = if(n_distinct(Juvenile.Adult) > 1) sum(MaxN) else max(MaxN), .groups = 'drop') %>%
+  arrange(Pin, On.Adjacent, Block, Species)
+```
 
+And built a little code to double check that it went correctly (should create two empty data frames)
+```{r checking this}
+# Summarize to find duplicates
+resolved_duplicates <- subset_maxn_combined_life_stages %>%
+  dplyr::group_by(Pin, On.Adjacent, Block, Species) %>%
+  dplyr::summarise(count = dplyr::n(), .groups = 'drop') %>%
+  dplyr::filter(count > 1)
+
+# Subset the original data to only include the duplicates
+resolved_duplicate_rows <- subset_maxn_combined_life_stages %>%
+  dplyr::inner_join(resolved_duplicates, by = c("Pin", "On.Adjacent", "Block", "Species")) %>%
+  dplyr::arrange(Pin, On.Adjacent, Block, Species)
+```
+
+I then deal with extreme schooling events following methods from the Donovan regimes paper: "Additional methodology was developed for dealing with outliers in the fish data, accounting for extreme observations of schooling species. Extreme observations in the database were defined by calculating the upper 99.9% of all individual observations (e.g. one species, size and count on an individual transect), resulting in 26 observations out of over 0.5 million, comprised of 11 species. The distribution of individual counts in the entire database for those 11 species was then used to identify observations that fell above the 99.0% quantile of counts for each species individually. These observations were adjusted to the 99.0% quantile for analysis."
+
+```{r}
+# Identify extreme observations I am using the 99% quantile instead because my data is smaller
+extreme_threshold <- quantile(subset_maxn_combined_life_stages$MaxN, probs = 0.99) 
+
+# Identify species that have extreme observations
+extreme_species <- subset_maxn_combined_life_stages %>%
+  filter(MaxN > extreme_threshold) %>%
+  pull(Species) %>%
+  unique()
+
+#make function to adjust counts for these species:
+adjust_counts <- function(df, species, quantile_threshold) {
+  quantile_value <- quantile(df$MaxN[df$Species == species], probs = quantile_threshold, na.rm = TRUE)
+ df$MaxN[df$Species == species & df$MaxN > quantile_value] <- quantile_value
+  return(df)
+}
+
+#make the adjustment. I'm adjusting to the 90% quantile
+for (sp in extreme_species) {
+  adjusted_subset_maxn <- adjust_counts(subset_maxn_combined_life_stages, sp, 0.90)
+}
+```
+
+and ending by renaming the dataframe as just fish_tidy for future use:
+this allows me to make extra tidy data adjustments without breaking the dataframe name later on in the code!
+```{r}
+fish_tidy <- adjusted_subset_maxn
+```
+
+## Data Vis
+Linda from Johanssen Lab reccommended to make a plot that is ordered by the most abundant fish near the seep and look for any patterns, so I went and made this plot a number of ways. First, I kept all the species and looked a just the average abundance at all pins, to see if the communities looked relatively similar in this way.
+
+#### All species average abundance across gradient
 ```{r average maxn at each pin}
-maxn_avg <- subset_maxn %>%
+maxn_avg <- fish_tidy %>%
   group_by(Pin, Species) %>%
-  summarize(avg_MaxN = mean(MaxN, na.rm = TRUE)) 
+  summarize(avg_MaxN = sum(MaxN, na.rm = TRUE) / 8)
 
 maxn_avg %>%
   ggplot(aes(x = Species, y = avg_MaxN)) +
@@ -55,6 +124,9 @@ maxn_avg %>%
   theme_minimal()
 ```
 
+This is too busy to read, and no major patterns jump out. I subset this to just the top 20 species along the gradient, and again the order of the pins does not have biological relevance.
+
+### Most common 20 species average abundance across gradient
 ```{r same but only top 20 species}
 # Step 1: Calculate the overall average MaxN for each species
 species_avg <- maxn_avg %>%
@@ -79,7 +151,8 @@ maxn_avg_top %>%
   theme_minimal()
 ```
 
-now let's order it by pin 14
+### So, now I will order the pins by those most common at pin 14
+
 ```{r pin 14 most common}
 # Step 1: Create a new column for avg_MaxN at Pin 14
 pin14_avg <- maxn_avg_top %>%
@@ -107,7 +180,7 @@ maxn_avg_top <- maxn_avg_top %>%
   mutate(Species = factor(Species, levels = species_order))
 
 # Step 5: Create the plot with the reordered species
-p1 <-maxn_avg_top %>%
+p1 <- maxn_avg_top %>%
   ggplot(aes(x = Species, y = avg_MaxN)) +
   geom_bar(stat = "identity", position = "dodge") +
   facet_wrap(~ Pin) +
@@ -118,10 +191,12 @@ p1 <-maxn_avg_top %>%
 
 p1
 
-ggsave(filename = "output/most_common_fish.png", p1, height = 10, width = 5)
+#ggsave(filename = "output/most_common_fish.png", p1, height = 10, width = 5)
 ```
 
-Ok, let's order this by distance to seep:
+This isn't showing the most obvious patterns, but there were only a few species of fish that swam in the sane near the seep. So, I'll reorder the pins by the distance to the seep
+
+### Most common species average abundance at each pin by distance to seep:
 
 ```{r by dist to seep}
 explan <- explan %>%
@@ -147,6 +222,9 @@ maxn_explan %>%
   theme_minimal()
 ```
 
+To see if maybe a nutrient parameter would be good desciptor, I do this also by the low tide mean silicate
+
+### Most common species average abundance across the gradient of low tide mean silicate
 
 ```{r by dist to silicate}
 explan <- explan %>%
@@ -172,6 +250,9 @@ maxn_explan %>%
   theme_minimal()
 ```
 
+### Most common species average abundance across the gradient of nutrient delivery
+Nutrient delivery quantified as a pc axis I got from the low tide mean of major nutrients across the gradient.
+
 ```{r by pulse pc 1}
 explan <- explan %>%
   mutate(Pin = as.numeric(sub("V", "", CowTagID)))
@@ -196,23 +277,8 @@ maxn_explan %>%
   theme_minimal()
 ```
 
-
-NMDS Code from Linda:
-
-DATA CLEANING YOU NEED TO DEAL WITH:
-```{r}
-# Summarize to find duplicates
-duplicates <- subset_maxn %>%
-  dplyr::group_by(Pin, On.Adjacent, Block, Species) %>%
-  dplyr::summarise(count = dplyr::n(), .groups = 'drop') %>%
-  dplyr::filter(count > 1)
-
-# Subset the original data to only include the duplicates
-duplicate_rows <- subset_maxn %>%
-  dplyr::inner_join(duplicates, by = c("Pin", "On.Adjacent", "Block", "Species")) %>%
-  dplyr::arrange(Pin, On.Adjacent, Block, Species)
-```
-
+## NMDS
+Code from Linda:
 
 ```{r wide data}
 maxn_sum <- maxn %>%
@@ -228,7 +294,7 @@ wide_maxn_df1 <- pivot_wider(maxn_sum,
 
 #but now with only the blocks we are using:
 
-subset_maxn1 <- subset_maxn %>%
+subset_maxn1 <- fish_tidy %>%
   group_by(Pin, On.Adjacent, Block, Species) %>%
   summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
   ungroup()
@@ -413,7 +479,7 @@ g2<-gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3
   geom_text(data = sig.spp.scrs3, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.5, max.overlaps = 15) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
 g2
 
-ggsave("NMDS_with_sig_spp.png", g2, width = 20, height = 20)
+#ggsave("NMDS_with_sig_spp.png", g2, width = 20, height = 20)
 ```
 
 
@@ -488,3 +554,4 @@ species_diversity_explan %>%
   facet_wrap(~On.Adjacent)
 ```
 
+# Distance based redundancy analysis
