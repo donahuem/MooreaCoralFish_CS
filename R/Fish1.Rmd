@@ -110,7 +110,7 @@ fish_tidy <- adjusted_subset_maxn
 Linda from Johanssen Lab reccommended to make a plot that is ordered by the most abundant fish near the seep and look for any patterns, so I went and made this plot a number of ways. First, I kept all the species and looked a just the average abundance at all pins, to see if the communities looked relatively similar in this way.
 
 #### All species average abundance across gradient
-```{r average maxn at each pin}
+```{r average maxn at each pin, fig.height= 10, fig.width=6}
 maxn_avg <- fish_tidy %>%
   group_by(Pin, Species) %>%
   summarize(avg_MaxN = sum(MaxN, na.rm = TRUE) / 8)
@@ -126,8 +126,8 @@ maxn_avg %>%
 
 This is too busy to read, and no major patterns jump out. I subset this to just the top 20 species along the gradient, and again the order of the pins does not have biological relevance.
 
-### Most common 20 species average abundance across gradient
-```{r same but only top 20 species}
+#### Most common 20 species average abundance across gradient
+```{r same but only top 20 species, fig.height= 10, fig.width=6}
 # Step 1: Calculate the overall average MaxN for each species
 species_avg <- maxn_avg %>%
   group_by(Species) %>%
@@ -151,9 +151,9 @@ maxn_avg_top %>%
   theme_minimal()
 ```
 
-### So, now I will order the pins by those most common at pin 14
+#### So, now I will order the pins by those most common at pin 14
 
-```{r pin 14 most common}
+```{r pin 14 most common, fig.height= 10, fig.width=6}
 # Step 1: Create a new column for avg_MaxN at Pin 14
 pin14_avg <- maxn_avg_top %>%
   filter(Pin == 14) %>%
@@ -196,9 +196,9 @@ p1
 
 This isn't showing the most obvious patterns, but there were only a few species of fish that swam in the sane near the seep. So, I'll reorder the pins by the distance to the seep
 
-### Most common species average abundance at each pin by distance to seep:
+#### Most common species average abundance at each pin by distance to seep:
 
-```{r by dist to seep}
+```{r by dist to seep, fig.height= 10, fig.width=6}
 explan <- explan %>%
   mutate(Pin = as.numeric(sub("V", "", CowTagID)))
 
@@ -222,11 +222,11 @@ maxn_explan %>%
   theme_minimal()
 ```
 
-To see if maybe a nutrient parameter would be good desciptor, I do this also by the low tide mean silicate
+To see if maybe a nutrient parameter would be good descriptor, I do this also by the low tide mean silicate
 
-### Most common species average abundance across the gradient of low tide mean silicate
+#### Most common species average abundance across the gradient of low tide mean silicate
 
-```{r by dist to silicate}
+```{r by dist to silicate, fig.height= 10, fig.width=6}
 explan <- explan %>%
   mutate(Pin = as.numeric(sub("V", "", CowTagID)))
 
@@ -250,10 +250,10 @@ maxn_explan %>%
   theme_minimal()
 ```
 
-### Most common species average abundance across the gradient of nutrient delivery
-Nutrient delivery quantified as a pc axis I got from the low tide mean of major nutrients across the gradient.
+#### Most common species average abundance across the gradient of nutrient delivery
+Nutrient delivery quantified as a pc axis I got from the low tide mean of major nutrients across the gradient.This axis captures 72.87298% of the variation in mean low tide TA, Phosphate, Silicate, and N + N. Higer numbers on this axis indicate higher values of these variables.
 
-```{r by pulse pc 1}
+```{r by pulse pc 1, fig.height= 10, fig.width=6}
 explan <- explan %>%
   mutate(Pin = as.numeric(sub("V", "", CowTagID)))
 
@@ -277,49 +277,125 @@ maxn_explan %>%
   theme_minimal()
 ```
 
-## NMDS
+## Alpha Diversity:
+
+#### Calculating richness against gradient metrics:
+
+```{r}
+species_richness <- fish_tidy %>%
+  filter(!Pin == "13") %>% 
+  filter(!Pin == "14") %>% 
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(Richness = n_distinct(Species[MaxN > 0]))
+
+species_richness_explan <- left_join(species_richness, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
+
+species_richness_explan %>%
+  ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Richness)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal() +
+  facet_wrap(~On.Adjacent)
+
+species_richness_explan %>%
+  ggplot(aes(x = pulse_pc1, y = Richness)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+
+species_richness_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Richness)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+```
+
+#### Calculating diversity against gradient metrics:
+```{r}
+species_diversity <- fish_tidy %>%
+  filter(!Pin == "13") %>% 
+  filter(!Pin == "14") %>% 
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(Diversity = diversity(MaxN, index = "shannon"))
+
+species_diversity_explan <- left_join(species_diversity, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
+
+species_diversity_explan %>%
+  ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Diversity)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+
+species_diversity_explan %>%
+  ggplot(aes(x = pulse_pc1, y = Diversity)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal()+
+  facet_wrap(~On.Adjacent)
+
+species_diversity_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Diversity)) +
+  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth() +
+  theme_minimal() +
+  facet_wrap(~On.Adjacent)
+```
+
+## NMDS Non-Dimensional Ordination
 Code from Linda:
 
 ```{r wide data}
-maxn_sum <- maxn %>%
-  group_by(Pin, On.Adjacent, Block, Species) %>%
-  summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
-  ungroup()
+# maxn_sum <- maxn %>%
+#   group_by(Pin, On.Adjacent, Block, Species) %>%
+#   summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
+#   ungroup()
 
 #make it wide
-wide_maxn_df1 <- pivot_wider(maxn_sum, 
+wide_maxn_df <- pivot_wider(fish_tidy, 
                              id_cols = c("Pin", "On.Adjacent", "Block"),
                              names_from = Species, 
                              values_from = MaxN)
 
 #but now with only the blocks we are using:
-
-subset_maxn1 <- fish_tidy %>%
-  group_by(Pin, On.Adjacent, Block, Species) %>%
-  summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
-  ungroup()
-
-wide_maxn_df <- pivot_wider(subset_maxn1[,c("Pin","On.Adjacent","Block","Species","MaxN")], 
-                             id_cols = c("Pin", "On.Adjacent", "Block"),
-                             names_from = Species, 
-                             values_from = MaxN)
+# 
+# subset_maxn1 <- fish_tidy %>%
+#   group_by(Pin, On.Adjacent, Block, Species) %>%
+#   summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
+#   ungroup()
+# 
+# wide_maxn_df <- pivot_wider(subset_maxn1[,c("Pin","On.Adjacent","Block","Species","MaxN")], 
+#                              id_cols = c("Pin", "On.Adjacent", "Block"),
+#                              names_from = Species, 
+#                              values_from = MaxN)
 
 #make the NAs as 0's
 wide_maxn_df <- wide_maxn_df %>% 
   mutate_all(~ifelse(is.na(.), 0, .))
 ```
 
-```{r}
+```{r widen her up}
 ##make a dataframe with ONLY your fish data
 ##within the parentheses you write which columns this would be
-Fish2 <-wide_maxn_df[c(4:68)]
+Fish2 <-wide_maxn_df[c(4:90)]
 
 ##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
 Sites<-wide_maxn_df[c(1)]
 #str(Sites)
 ```
 
-```{r}
+
+I've been going back and forth on the transformation here, and am currently going with hellinger instead of vegan's default, the wisconsin. This is because, from my limited understanding, the hellinger better handles cases where species are not present in multiple sites (known as double zeros). 
+
+```{r transform}
 ##hellinger transformation is a common transformation with community data when you have a lot of zeros
 Fish_com <- decostand(Fish2, method = "hellinger" )
 
@@ -483,75 +559,71 @@ g2
 ```
 
 
-### Calculating richness against gradient metrics:
 
-```{r}
-species_richness <- subset_maxn1 %>%
-  filter(!Pin == "13") %>% 
-  filter(!Pin == "14") %>% 
-  group_by(Pin, On.Adjacent, Block) %>%
-  summarise(Richness = n_distinct(Species[MaxN > 0]))
+# Constrained Ordination - Distance based redundancy analysis
 
-species_richness_explan <- left_join(species_richness, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
+I started with using the pulse pc axis, the low tide mean silicate, the distance to seep, and the distance to shore:
 
-species_richness_explan %>%
-  ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Richness)) +
-  geom_text(aes(label = Pin))+
-  geom_point() +
-  geom_smooth() +
-  theme_minimal() +
-  facet_wrap(~On.Adjacent)
+Tests revealed the shore distance didn't matter (permutation test p = 0.555), so I changed this to only use the pulse pc axis, the low tide mean silicate, the distance to seep, and the distance to shore:
+```{r Distance based redundancy analysis}
+# ##hellinger transformation is a common transformation with community data when you have a lot of zeros
+Species_only <-wide_maxn_df[c(4:90)]
+transformed_communities <- decostand(Species_only, method = "hellinger" )
 
-species_richness_explan %>%
-  ggplot(aes(x = pulse_pc1, y = Richness)) +
-  geom_text(aes(label = Pin))+
-  geom_point() +
-  geom_smooth() +
-  theme_minimal()+
-  facet_wrap(~On.Adjacent)
+# Extract the 'Pin' column from wide_maxn_df to merge with transformed data
+Pin_column <- wide_maxn_df["Pin"]
 
-species_richness_explan %>%
-  ggplot(aes(x = dist_to_seep_m, y = Richness)) +
-  geom_text(aes(label = Pin))+
-  geom_point() +
-  geom_smooth() +
-  theme_minimal()+
-  facet_wrap(~On.Adjacent)
+# Combine the Pin column with the transformed species data
+transformed_communities_with_pin <- cbind(Pin_column, transformed_communities)
+transformed_communities_with_explan <- left_join(transformed_communities_with_pin, explan[,c("Pin", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Silicate_umolL", "dist_to_seep_m", "Low_Tide_Mean_NN_umolL","Low_Tide_Mean_Ammonia_umolL")], by = join_by(Pin))
+cap = capscale(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + dist_to_seep_m + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL, data = transformed_communities_with_explan, dist = "bray")
+cap
 ```
 
-### Calculating diversity against gradient metrics:
+The output reports the total inertia, which is the total amount of variation (dissimilarity) in the data. This inertia is decomposed into ‘constrained’ and ‘unconstrained’ components. The constrained component is the total amount of variation explained by the predictors (18.36%), while the unconstrained component is the remaining ‘residual’ variation. There is also info on ‘real’ and ‘imaginary’ components, due to the negative eigenvalues issue which arises with PCoA.
+
+
+The default plot shows how these variables are loaded onto the first two CAP axes, and shows how the samples (circles) are ordinated on those axes, as well as the species scores (red crosses).
 ```{r}
-species_diversity <- subset_maxn1 %>%
-  filter(!Pin == "13") %>% 
-  filter(!Pin == "14") %>% 
-  group_by(Pin, On.Adjacent, Block) %>%
-  summarise(Diversity = diversity(MaxN, index = "shannon"))
-
-species_diversity_explan <- left_join(species_diversity, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
-
-species_diversity_explan %>%
-  ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Diversity)) +
-  geom_text(aes(label = Pin))+
-  geom_point() +
-  geom_smooth() +
-  theme_minimal()+
-  facet_wrap(~On.Adjacent)
-
-species_diversity_explan %>%
-  ggplot(aes(x = pulse_pc1, y = Diversity)) +
-  geom_text(aes(label = Pin))+
-  geom_point() +
-  geom_smooth() +
-  theme_minimal()+
-  facet_wrap(~On.Adjacent)
-
-species_diversity_explan %>%
-  ggplot(aes(x = dist_to_seep_m, y = Diversity)) +
-  geom_text(aes(label = Pin))+
-  geom_point() +
-  geom_smooth() +
-  theme_minimal() +
-  facet_wrap(~On.Adjacent)
+plot(cap)
 ```
 
-# Distance based redundancy analysis
+We can get the variance explained by these axes from summary:
+```{r}
+summary(cap)$cont
+```
+
+The first CAP axis explains 6.9% of the constrained community variation, and the second axis explains 4.3%. Therefore, this represents 2.07% of the total community variation. 
+
+Though this is already pretty poor, I might as well finish it out as a coding exercise. The loading coefficients for the explanatory variables on the constrained axes are: 
+
+```{r}
+summary(cap)$biplot
+```
+
+To test the important of all the predictors in combination:
+```{r}
+anova(cap)
+```
+
+So this tests whether the total variation explained by the constrained axes is significant. Interestingly, though the amount of variation seems trivial, it is showing up as significant...
+
+```{r}
+anova(cap, by = "axis")
+```
+So, both the axes we have plotted are considered significant.
+
+```{r}
+anova(cap, by = "margin")
+```
+
+Interestingly, all the axes are coming up as significant contributors to this variation.
+
+# PERMANOVA:
+```{r}
+PERMANOVA = adonis2(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + dist_to_seep_m + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL, data = transformed_communities_with_explan, dist = "bray", by = 'margin')
+
+PERMANOVA
+```
+
+Again, all of our variables are significant contributors to community composition, though with very low r2.
