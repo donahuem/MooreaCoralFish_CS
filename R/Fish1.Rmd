@@ -19,13 +19,15 @@ library(vegan)
 library(viridis)
 library(tidyr)
 library(stringr)
+library(lme4)
 ```
 
 
 ```{r data}
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/MaxN.csv")
-explan<- read.csv("data/explanatory_all_wide.csv")
+explan<- read.csv("data/explanatory_all_wide.csv") %>% 
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
 ```
 
 ### TIDY DATA:
@@ -110,13 +112,54 @@ for (sp in extreme_species) {
 }
 ```
 
+I want to make sure blocks are summarized appropriately, so I renamed them:
+```{r}
+adjusted_subset_maxn$Block <- paste0(adjusted_subset_maxn$On.Adjacent, " ", adjusted_subset_maxn$Block) #I want to make sure that factor levels are different for each combo of on/adjacent and block so that I don't accidentially combine blocks 
+```
+
 and ending by renaming the dataframe as just fish_tidy for future use:
 this allows me to make extra tidy data adjustments without breaking the dataframe name later on in the code!
-```{r}
+```{r make fish tidy}
 fish_tidy <- adjusted_subset_maxn
 ```
 
-## Data Vis
+I've also made a wide version of the data frame for ordination:
+
+```{r wide data}
+#make it wide
+wide_maxn_df <- pivot_wider(fish_tidy, 
+                             id_cols = c("Pin", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN)
+
+#make the NAs as 0's
+wide_maxn_df <- wide_maxn_df %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))
+```
+
+Then used that one to re-make the long data frame with a presence column instead of abundance
+```{r long data with presence}
+species <- names(wide_maxn_df[,c(3:ncol(wide_maxn_df))])
+
+fish_long <- pivot_longer(wide_maxn_df,
+                          cols = species,
+                          names_to = "species",
+                          values_to = "Abundance")
+#This is going to be much longer, because it has a row for every species at every block
+
+#check it:
+# original_combinations <- fish_tidy %>% select(Pin, Block) %>% distinct()
+# transformed_combinations <- fish_long %>% select(Pin, Block) %>% distinct()
+# 
+# all.equal(original_combinations, transformed_combinations)
+
+presence <- fish_long %>% 
+  mutate(Presence = ifelse(Abundance == 0, 0, 1))
+```
+
+
+# Data Vis
+
 Linda from Johanssen Lab reccommended to make a plot that is ordered by the most abundant fish near the seep and look for any patterns, so I went and made this plot a number of ways. First, I kept all the species and looked a just the average abundance at all pins, to see if the communities looked relatively similar in this way.
 
 #### All species average abundance across gradient
@@ -209,9 +252,6 @@ This isn't showing the most obvious patterns, but there were only a few species 
 #### Most common species average abundance at each pin by distance to seep:
 
 ```{r by dist to seep, fig.height= 10, fig.width=6}
-explan <- explan %>%
-  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
-
 maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL")])
 
 pin_order <- maxn_explan %>%
@@ -363,39 +403,12 @@ species_diversity_explan %>%
 ## NMDS Non-Dimensional Ordination
 Code from Linda:
 
-```{r wide data}
-# maxn_sum <- maxn %>%
-#   group_by(Pin, On.Adjacent, Block, Species) %>%
-#   summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
-#   ungroup()
 
-#make it wide
-wide_maxn_df <- pivot_wider(fish_tidy, 
-                             id_cols = c("Pin", "On.Adjacent", "Block"),
-                             names_from = Species, 
-                             values_from = MaxN)
 
-#but now with only the blocks we are using:
-# 
-# subset_maxn1 <- fish_tidy %>%
-#   group_by(Pin, On.Adjacent, Block, Species) %>%
-#   summarize(MaxN = sum(MaxN, na.rm = TRUE)) %>%
-#   ungroup()
-# 
-# wide_maxn_df <- pivot_wider(subset_maxn1[,c("Pin","On.Adjacent","Block","Species","MaxN")], 
-#                              id_cols = c("Pin", "On.Adjacent", "Block"),
-#                              names_from = Species, 
-#                              values_from = MaxN)
-
-#make the NAs as 0's
-wide_maxn_df <- wide_maxn_df %>% 
-  mutate_all(~ifelse(is.na(.), 0, .))
-```
-
-```{r widen her up}
+```{r species data use}
 ##make a dataframe with ONLY your fish data
 ##within the parentheses you write which columns this would be
-Fish2 <-wide_maxn_df[c(4:ncol(wide_maxn_df))]
+Fish2 <-wide_maxn_df[c(3:ncol(wide_maxn_df))]
 
 ##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
 Sites<-wide_maxn_df[c(1)]
@@ -584,7 +597,7 @@ I started with using the pulse pc axis, the low tide mean silicate, the distance
 Tests revealed the shore distance didn't matter (permutation test p = 0.555), so I changed this to only use the pulse pc axis, the low tide mean silicate, the distance to seep, and the distance to shore:
 ```{r Distance based redundancy analysis}
 # ##hellinger transformation is a common transformation with community data when you have a lot of zeros
-Species_only <-wide_maxn_df[c(4:ncol(wide_maxn_df))]
+Species_only <-wide_maxn_df[c(3:ncol(wide_maxn_df))]
 transformed_communities <- decostand(Species_only, method = "hellinger" )
 
 # Extract the 'Pin' column from wide_maxn_df to merge with transformed data
@@ -644,3 +657,31 @@ PERMANOVA
 ```
 
 Again, all of our variables are significant contributors to community composition, though with very low r2.
+
+# Mixed Models for Multivariate Data
+
+The first model I test is looking at the probability of presence, and whether it differs between the CV of Salinity. With this, the effect of salinity differs randomly around the species. The random effect for salinity can quantify how much the community composition chnanges along the gradient. If the random effect is non-0, the species change in relative abundance along the salinity gradient.
+```{r}
+# mod.season = glmer(presence ~ season + (1+season|species), data = channel, family = binomial)
+# mod.no.season = glmer(presence ~ season + (1|species), data = channel, family= binomial)
+# anova(mod.season, mod.no.season)
+
+presence_explan <- left_join(presence, explan[,c("Pin", "CV_Salinity")],by = join_by(Pin))
+
+mod.salinity = glmer(Presence ~ CV_Salinity + (1+CV_Salinity|species), data = presence_explan, family = binomial)
+
+summary(mod.salinity)
+dotplot(ranef(mod.salinity, condVar = T))
+```
+
+We can test the salinity effect by dropping the random slope and doing an LRT
+```{r}
+mod.no.salinity = glmer(Presence ~ CV_Salinity + (1|species), data = presence_explan, family= binomial)
+anova(mod.salinity, mod.no.salinity)
+```
+
+This doesn't look great, but the technique is interesting.
+
+# GAM
+
+I want to try to do this to look at non-linear distribution along the gradient. I think some species might be non-linear as they might avoid the highly fresh region. I think this might be easiest to look at if I only looked at certain species of interest, which I still would like to define.
