@@ -18,6 +18,7 @@ library(ggplot2)
 library(vegan)
 library(viridis)
 library(tidyr)
+library(stringr)
 ```
 
 
@@ -52,10 +53,19 @@ subset_block_count_per_location <- subset_maxn %>%
 #table(subset_block_count_per_location$num_blocks, subset_block_count_per_location$Pin)
 ```
 
+Removed unknowns, cryptic species, etc:
+```{r}
+subset_maxn_no_unk <- subset_maxn %>%
+  filter(!str_detect(Species, "nknown")) %>% #anything that has nknown for unknown species
+  filter(!(Species == "Bothus spp")) %>%  #goodbye flounder
+  filter(!(Species == "Scorpaenopsis diabolus")) %>% #scorpoionfish are crpytic
+  filter(!(Species == "Gymnothorax javanicus")) #sorry Julie
+```
+
 Since we could count some species as distinct individuals by life stages, I have combined those counts together here:
 
 ```{r combining life stages}
-subset_maxn_combined_life_stages <- subset_maxn %>%
+subset_maxn_combined_life_stages <- subset_maxn_no_unk %>%
   group_by(Pin, On.Adjacent, Block, Species) %>%
   summarise(MaxN = if(n_distinct(Juvenile.Adult) > 1) sum(MaxN) else max(MaxN), .groups = 'drop') %>%
   arrange(Pin, On.Adjacent, Block, Species)
@@ -194,7 +204,7 @@ p1
 #ggsave(filename = "output/most_common_fish.png", p1, height = 10, width = 5)
 ```
 
-This isn't showing the most obvious patterns, but there were only a few species of fish that swam in the sane near the seep. So, I'll reorder the pins by the distance to the seep
+This isn't showing the most obvious patterns, but there were only a few species of fish that swam in the sand near the seep. So, I'll reorder the pins by the distance to the seep
 
 #### Most common species average abundance at each pin by distance to seep:
 
@@ -385,7 +395,7 @@ wide_maxn_df <- wide_maxn_df %>%
 ```{r widen her up}
 ##make a dataframe with ONLY your fish data
 ##within the parentheses you write which columns this would be
-Fish2 <-wide_maxn_df[c(4:90)]
+Fish2 <-wide_maxn_df[c(4:ncol(wide_maxn_df))]
 
 ##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
 Sites<-wide_maxn_df[c(1)]
@@ -434,12 +444,19 @@ head(data.spp.fit)
 spp.scrs <- as.data.frame(scores(data.spp.fit, display = "vectors")) #save species intrinsic values into dataframe
 spp.scrs <- cbind(spp.scrs, Species = rownames(spp.scrs)) #add species names to dataframe
 
-head(spp.scrs)
+#head(spp.scrs)
+# Extract p-values from the envfit result
+pvals <- data.spp.fit$vectors$pvals
+# Add the p-values to the spp.scrs dataframe
+spp.scrs$pval <- pvals
 
-sig.spp.scrs <- spp.scrs
-#sig.spp.scrs <- subset(spp.scrs, pval<=0.05) #subset data to show species significant at 0.05
+# Subset data to show species significant at 0.05
+sig.spp.scrs <- subset(spp.scrs, pval <= 0.05)
 
-#head(sig.spp.scrs)
+# sig.spp.scrs <- spp.scrs
+# sig.spp.scrs <- subset(spp.scrs, pvals<=0.05) #subset data to show species significant at 0.05
+
+head(sig.spp.scrs)
 ```
 
 ```{r}
@@ -464,7 +481,7 @@ data.scores$Site <- as.factor(data.scores$Site)
 g2<-gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.8)+
   #geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
              #  data = spp.scrs)+
-  ggrepel::geom_text_repel(data = spp.scrs, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.25) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
+  ggrepel::geom_text_repel(data = sig.spp.scrs, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.25) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
 
 g2 <- g2 + scale_shape_manual(values = 1:20)  # Assuming there are 20 unique sites
 
@@ -503,7 +520,7 @@ spp.scrs3 <- cbind(spp.scrs3, Species = rownames(spp.scrs3)) #add species names 
 spp.scrs3 <- cbind(spp.scrs3, pval = data.spp.fit$vectors$pvals) #add pvalues to dataframe so you can select species which are significant
 
 #spp.scrs<- cbind(spp.scrs, abrev = abbreviate(spp.scrs$Species, minlength = 6)) #abbreviate species names
-sig.spp.scrs3 <- subset(spp.scrs3, pval<=0.05) #subset data to show species significant at 0.05
+sig.spp.scrs3 <- subset(spp.scrs3, pval<=0.008) #subset data to show species significant at 0.05
 
 sig.spp.scrs3
 ```
@@ -567,7 +584,7 @@ I started with using the pulse pc axis, the low tide mean silicate, the distance
 Tests revealed the shore distance didn't matter (permutation test p = 0.555), so I changed this to only use the pulse pc axis, the low tide mean silicate, the distance to seep, and the distance to shore:
 ```{r Distance based redundancy analysis}
 # ##hellinger transformation is a common transformation with community data when you have a lot of zeros
-Species_only <-wide_maxn_df[c(4:90)]
+Species_only <-wide_maxn_df[c(4:ncol(wide_maxn_df))]
 transformed_communities <- decostand(Species_only, method = "hellinger" )
 
 # Extract the 'Pin' column from wide_maxn_df to merge with transformed data
@@ -593,7 +610,7 @@ We can get the variance explained by these axes from summary:
 summary(cap)$cont
 ```
 
-The first CAP axis explains 6.9% of the constrained community variation, and the second axis explains 4.3%. Therefore, this represents 2.07% of the total community variation. 
+The first CAP axis explains 6.97% of the constrained community variation, and the second axis explains 4.34%. Therefore, this represents 2.07% of the total community variation. 
 
 Though this is already pretty poor, I might as well finish it out as a coding exercise. The loading coefficients for the explanatory variables on the constrained axes are: 
 
