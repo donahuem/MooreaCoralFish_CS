@@ -20,6 +20,8 @@ library(viridis)
 library(tidyr)
 library(stringr)
 library(lme4)
+library(mgcv)
+library(gridExtra)
 ```
 
 
@@ -53,6 +55,14 @@ subset_block_count_per_location <- subset_maxn %>%
 
 #Check that everybody has 4 blocks 2 times:
 #table(subset_block_count_per_location$num_blocks, subset_block_count_per_location$Pin)
+```
+
+```{r if you want to see pin order of different explan}
+# pin_order <- explan %>%
+#   distinct(Pin, dist_to_seep_m) %>%
+#   filter(Pin != 13) %>%  # Exclude Pin 13
+#   arrange(dist_to_seep_m) %>%
+#   pull(Pin)
 ```
 
 Removed unknowns, cryptic species, etc:
@@ -123,6 +133,25 @@ this allows me to make extra tidy data adjustments without breaking the datafram
 fish_tidy <- adjusted_subset_maxn
 ```
 
+## Resource Fish Only
+
+I'm pulling a list of fished genus from the paper "Perceptions and responses of Pacific Island fishers to changing coral reefs" by Rassweiler et al., 2021. I am editing fish_tidy to split genus and species, creating a column based off whether the genus is on the list for Rassweiler et al, and then making that into a binary variable 'Resource'.
+
+Also in this paper, it shows that "Naso, Chlorurus and Scarus collectively composed the bulk of the fishable biomass on the reef (48–66%) and a roughly similar total proportion of the catch (43–65%)." I have made a variable 'most_targeted' for these genus.
+
+```{r}
+rassweiler_resource <- c("Chlorurus", "Scarus", "Naso", "Myripristis", "Siganus", "Mulloidichthys", "Parupeneus", "Epinephelus", "Selar", "Cypselurus", "Acanthurus", "Cephalopholis", "Cheilopogon", "Sargocentron", "Lutjanus", "Monotaxis", "Caranx", "Lethrinus", "Calotomus", "Heteropriacanthus", "Cheilinus", "Gnathodentex", "Kyphosus")
+
+most_targeted <- c("Chlorurus", "Scarus", "Naso")
+
+fish_tidy_resource <- fish_tidy %>%
+  separate(Species, into = c("Genus", "sp"), sep = " ",remove = FALSE) %>% 
+  mutate(Resource = if_else(Genus %in% rassweiler_resource, 1, 0))%>% 
+  mutate(Most_targeted = if_else(Genus %in% most_targeted, 1, 0)) %>% 
+  select(-Genus, -sp)
+```
+
+## Wide data for ordination:
 I've also made a wide version of the data frame for ordination:
 
 ```{r wide data}
@@ -155,6 +184,13 @@ fish_long <- pivot_longer(wide_maxn_df,
 
 presence <- fish_long %>% 
   mutate(Presence = ifelse(Abundance == 0, 0, 1))
+
+#and making a column for resource and most targeted fish (which is done at the genus level)
+presence_resource <- presence %>%
+  separate(species, into = c("Genus", "sp"), sep = " ",remove = FALSE) %>% 
+  mutate(Resource = if_else(Genus %in% rassweiler_resource, 1, 0))%>% 
+  mutate(Most_targeted = if_else(Genus %in% most_targeted, 1, 0)) %>% 
+  select(-Genus, -sp)
 ```
 
 
@@ -252,7 +288,7 @@ This isn't showing the most obvious patterns, but there were only a few species 
 #### Most common species average abundance at each pin by distance to seep:
 
 ```{r by dist to seep, fig.height= 10, fig.width=6}
-maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL")])
+maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL", "sd_Salinity")])
 
 pin_order <- maxn_explan %>%
   distinct(Pin, dist_to_seep_m) %>%
@@ -685,3 +721,145 @@ This doesn't look great, but the technique is interesting.
 # GAM
 
 I want to try to do this to look at non-linear distribution along the gradient. I think some species might be non-linear as they might avoid the highly fresh region. I think this might be easiest to look at if I only looked at certain species of interest, which I still would like to define.
+
+For now, I'm setting up the code using species driving differences in the nmds
+
+```{r gam tidy}
+gam_species <- sig.spp.scrs$Species
+
+gam_fish <- presence %>% 
+  filter(species %in% gam_species) %>% 
+  left_join(explan[,c("Pin", "dist_to_seep_m")],by = join_by(Pin))
+
+gam_fish$species <- as.factor(gam_fish$species)
+
+#for just resource
+resource_gam <- presence_resource %>% 
+#  filter(species %in% gam_species) %>% 
+  filter(Resource != 0) %>% #remove non-resource species
+  left_join(explan[,c("Pin", "dist_to_seep_m")],by = join_by(Pin))
+
+resource_gam$species <- as.factor(resource_gam$species)
+```
+
+
+```{r}
+# gam.sig.fish <- gam(Presence ~ s(CV_Salinity) + s(species, bs = "re"), 
+#                     data = gam_fish, 
+#                     family = binomial(link = "logit"))
+# 
+# summary(gam.sig.fish)
+# 
+# mgcv::plot.gam(gam.sig.fish)
+
+gam.sig.fish = gam(Presence ~ s(dist_to_seep_m, by = species), data = gam_fish, family = binomial)
+
+summary(gam.sig.fish)
+
+par(mar = c(1, 1, 2, 1)) 
+mgcv::plot.gam(gam.sig.fish, pages = 10)
+
+```
+
+```{r}
+res.gam.sig.fish = gam(Presence ~ s(dist_to_seep_m, by = species), data = resource_gam, family = binomial)
+
+summary(res.gam.sig.fish)
+
+par(mar = c(1, 1, 2, 1)) 
+mgcv::plot.gam(res.gam.sig.fish, pages = 10)
+```
+
+This code didn't really work as intended. But, when I talked to Kyle Edwards, he suggested that I make a different gam for each species. This is more or less a preliminary step to see if a linear fit is good enough for this data:
+
+
+```{r presence different gam for each species}
+# Create an empty list to store the models and plots
+models <- list()
+plots <- list()
+
+# Loop over each unique species
+for(spec in unique(resource_gam$species)) {
+  # Subset the data for the current species
+  species_data <- subset(resource_gam, species == spec)
+  
+  # Fit the GAM for the current species
+  gam_model <- gam(Presence ~ s(dist_to_seep_m), data = species_data, family = binomial)
+  
+  # Store the model in the list
+  models[[spec]] <- gam_model
+  
+  # Create a data frame for predictions
+  pred_data <- data.frame(
+    dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100)
+  )
+  
+  # Predict the presence probability
+  pred_data$Presence <- predict(gam_model, newdata = pred_data, type = "response")
+  
+  # Plot the results
+  p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
+    geom_line() +
+    labs(title = paste("Species:", spec)) +
+    theme_minimal()
+  
+  # Store the plot in the list
+  plots[[spec]] <- p
+}
+
+# Arrange all plots together in a grid
+do.call(grid.arrange, c(plots, ncol = 2))
+```
+
+```{r different ABUNDANCE gam for each resource species}
+# Create an empty list to store the models and plots
+models <- list()
+plots <- list()
+
+# Loop over each unique species
+for(spec in unique(resource_gam$species)) {
+  # Subset the data for the current species
+  species_data <- subset(resource_gam, species == spec)
+  
+  # Fit the GAM for the current species
+  gam_model <- gam(Abundance ~ s(dist_to_seep_m), data = species_data, family = nb(), 
+                 control = gam.control(maxit = 100, epsilon = 1e-6))
+  
+  # Store the model in the list
+  models[[spec]] <- gam_model
+  
+  # Create a data frame for predictions
+  pred_data <- data.frame(
+    dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100)
+  )
+  
+  # Predict the abundance
+  pred_data$Abundance <- predict(gam_model, newdata = pred_data, type = "response")
+  
+  # Plot the results
+  p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Abundance)) +
+    geom_line() +
+    labs(x = "Distance to Seep", title = paste("Species:", spec))  +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 10))
+  
+  # Store the plot in the list
+  plots[[spec]] <- p
+}
+
+# Arrange all plots together in a grid
+individual_abundance_gam <- do.call(grid.arrange, c(plots, ncol = 5))
+
+#ggsave(filename = "output/abundance_gam_resoure_fish.png", individual_abundance_gam, height = 10, width = 10)
+```
+
+From further inspection, the model has issues with Naso annulatus, Naso unicornis, Scarus oviceps
+
+print(warnings_list[["Naso unicornis"]])
+[1] "Iteration limit reached without full convergence - check carefully"
+
+print(warnings_list[["Naso annulatus"]])
+[1] "Fitting terminated with step failure - check results carefully"
+
+print(warnings_list[["Scarus oviceps"]])
+[1] "Fitting terminated with step failure - check results carefully"
