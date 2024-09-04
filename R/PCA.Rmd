@@ -35,6 +35,23 @@ depth <- depth[,c(1,2,6)]
 shore_dist <- left_join(shore_dist, seep_dist, by ="CowTagID")
 shore_dist <- left_join(shore_dist, depth, by = "CowTagID")
 
+```
+
+```{r scaling columns}
+for (col in pulse_columns) {
+  scaled_variable <- paste0(col, "_scaled")
+  scaled_values <- scale(all_nut[[col]], TRUE, TRUE)
+  all_nut[[scaled_variable]] <- scaled_values[, 1]
+}
+
+scaled_pulse_columns <- names(all_nut)[grepl("^Low_Tide_Mean.*_scaled$", names(all_nut))]
+```
+
+```{r}
+nut_no_seep <- all_nut[all_nut$CowTagID != 'VSEEP',]
+```
+
+```{r}
 #nut_wide <- pivot_wider(
 #  data = nut,
 #  names_from = Parameters,
@@ -57,20 +74,6 @@ pulse_columns <- names(nut)[grepl("Low_Tide_Mean_", names(nut)) &
 meta_columns <- names(nut_no_seep)[c(1)]
 
 #keeping V13 in this ex
-```
-
-```{r scaling columns}
-for (col in pulse_columns) {
-  scaled_variable <- paste0(col, "_scaled")
-  scaled_values <- scale(all_nut[[col]], TRUE, TRUE)
-  all_nut[[scaled_variable]] <- scaled_values[, 1]
-}
-
-scaled_pulse_columns <- names(all_nut)[grepl("^Low_Tide_Mean.*_scaled$", names(all_nut))]
-```
-
-```{r}
-nut_no_seep <- all_nut[all_nut$CowTagID != 'VSEEP',]
 ```
 
 ```{r}
@@ -289,5 +292,13 @@ pca.data <- na.omit(nut_no_seep[, c("Minimum_Salinity", "Maximum_TA", "sd_pH", "
 pca = princomp(pca.data, cor=TRUE)
 summary(pca)
 biplot(pca)
+```
+
+```{r}
+ggplot(nut_no_seep, aes(x = lon, y = lat, color = sd_Salinity)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
 ```
 

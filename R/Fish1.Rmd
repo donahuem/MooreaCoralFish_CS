@@ -63,6 +63,12 @@ subset_block_count_per_location <- subset_maxn %>%
 #   filter(Pin != 13) %>%  # Exclude Pin 13
 #   arrange(dist_to_seep_m) %>%
 #   pull(Pin)
+
+pin_order <- explan %>%
+  distinct(Pin, CV_pH) %>%
+  filter(Pin != 13) %>%  # Exclude Pin 13
+  arrange(CV_pH) %>%
+  pull(Pin)
 ```
 
 Removed unknowns, cryptic species, etc:
@@ -376,29 +382,31 @@ species_richness <- fish_tidy %>%
 
 species_richness_explan <- left_join(species_richness, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
 
-species_richness_explan %>%
+p1 <- species_richness_explan %>%
   ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Richness)) +
-  geom_text(aes(label = Pin))+
+#  geom_text(aes(label = Pin))+
   geom_point() +
   geom_smooth() +
   theme_minimal() +
   facet_wrap(~On.Adjacent)
 
-species_richness_explan %>%
+p2 <- species_richness_explan %>%
   ggplot(aes(x = pulse_pc1, y = Richness)) +
-  geom_text(aes(label = Pin))+
+#  geom_text(aes(label = Pin))+
   geom_point() +
   geom_smooth() +
   theme_minimal()+
   facet_wrap(~On.Adjacent)
 
-species_richness_explan %>%
+p3 <- species_richness_explan %>%
   ggplot(aes(x = dist_to_seep_m, y = Richness)) +
-  geom_text(aes(label = Pin))+
+#  geom_text(aes(label = Pin))+
   geom_point() +
   geom_smooth() +
   theme_minimal()+
   facet_wrap(~On.Adjacent)
+
+grid.arrange(p1, p2, p3, nrow = 1)
 ```
 
 #### Calculating diversity against gradient metrics:
@@ -411,35 +419,35 @@ species_diversity <- fish_tidy %>%
 
 species_diversity_explan <- left_join(species_diversity, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
 
-species_diversity_explan %>%
+p1 <- species_diversity_explan %>%
   ggplot(aes(x = Low_Tide_Mean_Silicate_umolL, y = Diversity)) +
-  geom_text(aes(label = Pin))+
+#  geom_text(aes(label = Pin))+
   geom_point() +
   geom_smooth() +
   theme_minimal()+
   facet_wrap(~On.Adjacent)
 
-species_diversity_explan %>%
+p2 <- species_diversity_explan %>%
   ggplot(aes(x = pulse_pc1, y = Diversity)) +
-  geom_text(aes(label = Pin))+
+#  geom_text(aes(label = Pin))+
   geom_point() +
   geom_smooth() +
   theme_minimal()+
   facet_wrap(~On.Adjacent)
 
-species_diversity_explan %>%
+p3 <- species_diversity_explan %>%
   ggplot(aes(x = dist_to_seep_m, y = Diversity)) +
-  geom_text(aes(label = Pin))+
+#  geom_text(aes(label = Pin))+
   geom_point() +
   geom_smooth() +
   theme_minimal() +
   facet_wrap(~On.Adjacent)
+
+grid.arrange(p1, p2, p3, nrow = 1)
 ```
 
 ## NMDS Non-Dimensional Ordination
 Code from Linda:
-
-
 
 ```{r species data use}
 ##make a dataframe with ONLY your fish data
@@ -744,13 +752,13 @@ resource_gam$species <- as.factor(resource_gam$species)
 
 
 ```{r}
-# gam.sig.fish <- gam(Presence ~ s(CV_Salinity) + s(species, bs = "re"), 
-#                     data = gam_fish, 
-#                     family = binomial(link = "logit"))
-# 
-# summary(gam.sig.fish)
-# 
-# mgcv::plot.gam(gam.sig.fish)
+gam.sig.fish <- gam(Presence ~ s(CV_Salinity) + s(species, bs = "re"),
+                    data = gam_fish,
+                    family = binomial(link = "logit"))
+
+summary(gam.sig.fish)
+
+mgcv::plot.gam(gam.sig.fish)
 
 gam.sig.fish = gam(Presence ~ s(dist_to_seep_m, by = species), data = gam_fish, family = binomial)
 
@@ -769,7 +777,7 @@ summary(res.gam.sig.fish)
 par(mar = c(1, 1, 2, 1)) 
 mgcv::plot.gam(res.gam.sig.fish, pages = 10)
 ```
-
+  
 This code didn't really work as intended. But, when I talked to Kyle Edwards, he suggested that I make a different gam for each species. This is more or less a preliminary step to see if a linear fit is good enough for this data:
 
 
@@ -800,15 +808,16 @@ for(spec in unique(resource_gam$species)) {
   # Plot the results
   p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
     geom_line() +
-    labs(title = paste("Species:", spec)) +
-    theme_minimal()
+    labs(title = paste(spec)) +
+    theme_minimal()+
+  theme(plot.title = element_text(face = "italic"))
   
   # Store the plot in the list
   plots[[spec]] <- p
 }
 
 # Arrange all plots together in a grid
-do.call(grid.arrange, c(plots, ncol = 2))
+do.call(grid.arrange, c(plots, ncol = 4))
 ```
 
 ```{r different ABUNDANCE gam for each resource species}
@@ -839,7 +848,7 @@ for(spec in unique(resource_gam$species)) {
   # Plot the results
   p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Abundance)) +
     geom_line() +
-    labs(x = "Distance to Seep", title = paste("Species:", spec))  +
+    labs(x = "Distance to Seep", title = paste(spec))  +
     theme_minimal() +
     theme(plot.title = element_text(size = 10))
   
@@ -863,3 +872,42 @@ print(warnings_list[["Naso annulatus"]])
 
 print(warnings_list[["Scarus oviceps"]])
 [1] "Fitting terminated with step failure - check results carefully"
+
+```{r presence different gam for each species}
+# Create an empty list to store the models and plots
+models <- list()
+plots <- list()
+
+# Loop over each unique species
+for(spec in unique(gam_fish$species)) {
+  # Subset the data for the current species
+  species_data <- subset(gam_fish, species == spec)
+  
+  # Fit the GAM for the current species
+  gam_model <- gam(Presence ~ s(dist_to_seep_m), data = species_data, family = binomial)
+  
+  # Store the model in the list
+  models[[spec]] <- gam_model
+  
+  # Create a data frame for predictions
+  pred_data <- data.frame(
+    dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100)
+  )
+  
+  # Predict the presence probability
+  pred_data$Presence <- predict(gam_model, newdata = pred_data, type = "response")
+  
+  # Plot the results
+  p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
+    geom_line() +
+    labs(title = paste(spec)) +
+    theme_minimal()+
+  theme(plot.title = element_text(face = "italic"))
+  
+  # Store the plot in the list
+  plots[[spec]] <- p
+}
+
+# Arrange all plots together in a grid
+do.call(grid.arrange, c(plots, ncol = 4))
+```
