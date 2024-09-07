@@ -27,12 +27,55 @@ library(gridExtra)
 
 ```{r data}
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
-maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/MaxN.csv")
+functional_groups <- read.csv("data/fish_functional_groups.csv")
+maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/MaxN.csv") %>% 
+  mutate(Species = ifelse(Species == "Himantura fai", "Pateobatis fai", Species))
 explan<- read.csv("data/explanatory_all_wide.csv") %>% 
   mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+db <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Full_Metadata.csv") #Rugosity data pulled from Danielle Barnas' measurements
 ```
 
 ### TIDY DATA:
+
+
+
+```{r changing cowtag to a letter}
+## FOR MAKING QGIS MAPS, NEEDED TO CODE SOMEWHERE
+fish_map_data <- db[c("CowTagID", "lat", "lon","Location", "dist_to_seep_m")] %>%
+  filter(Location == "Varari") %>%
+  filter(grepl("^V", CowTagID)) %>%
+  filter(!(CowTagID == "V13")) %>% #comment this out for coral
+  filter(!(CowTagID == "V2")) %>%  #comment this out for coral
+  mutate(dist_to_seep_m_temp = ifelse(dist_to_seep_m < 0, 10000, dist_to_seep_m)) %>%
+  mutate(dist_to_seep_m_temp = ifelse(dist_to_seep_m_temp == 0, Inf, dist_to_seep_m_temp)) %>%
+  arrange(dist_to_seep_m) %>%
+  mutate(alphabetical = case_when(
+    CowTagID == "VSEEP" ~ "SEEP",
+    TRUE ~ toupper(letters[rank(dist_to_seep_m_temp)])
+  )) %>%
+  select(-dist_to_seep_m_temp)
+#   
+
+map_data_join <- fish_map_data %>% 
+  dplyr::filter(!(CowTagID == "VSEEP")) %>% 
+  mutate(Pin = sub("^V", "", CowTagID))%>%
+  mutate(Pin = as.numeric(Pin))
+
+maxn <- left_join(map_data_join[,c("Pin", "alphabetical")], maxn, by = join_by(Pin))
+maxn$Pin <- maxn$alphabetical
+```
+
+## Cleaning up explan
+```{r join rugosity}
+explan <- left_join(explan, db[,c("CowTagID", "meanRugosity")])
+```
+
+```{r}
+explan <- explan %>%
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+explan <- left_join(map_data_join[,c("Pin", "alphabetical")], explan, by = join_by(Pin))
+explan$Pin <- explan$alphabetical 
+```
 
 First chunk of code subsets to only using 8 blocks per survey location, 4 from an 'on' and 4 from an 'adjacent'. I also remove pins where camera malfunctions made this not possible (Pin 13 and Pin 2).
 
@@ -58,17 +101,11 @@ subset_block_count_per_location <- subset_maxn %>%
 ```
 
 ```{r if you want to see pin order of different explan}
-# pin_order <- explan %>%
+# pin_order <- %>% %>%
 #   distinct(Pin, dist_to_seep_m) %>%
 #   filter(Pin != 13) %>%  # Exclude Pin 13
 #   arrange(dist_to_seep_m) %>%
 #   pull(Pin)
-
-pin_order <- explan %>%
-  distinct(Pin, CV_pH) %>%
-  filter(Pin != 13) %>%  # Exclude Pin 13
-  arrange(CV_pH) %>%
-  pull(Pin)
 ```
 
 Removed unknowns, cryptic species, etc:
@@ -139,6 +176,11 @@ this allows me to make extra tidy data adjustments without breaking the datafram
 fish_tidy <- adjusted_subset_maxn
 ```
 
+```{r only reef pins in fish_tidy}
+reef_pins_fish_tidy <- fish_tidy %>% 
+  filter(Pin != "A") #was pin 14
+```
+
 ## Resource Fish Only
 
 I'm pulling a list of fished genus from the paper "Perceptions and responses of Pacific Island fishers to changing coral reefs" by Rassweiler et al., 2021. I am editing fish_tidy to split genus and species, creating a column based off whether the genus is on the list for Rassweiler et al, and then making that into a binary variable 'Resource'.
@@ -155,6 +197,9 @@ fish_tidy_resource <- fish_tidy %>%
   mutate(Resource = if_else(Genus %in% rassweiler_resource, 1, 0))%>% 
   mutate(Most_targeted = if_else(Genus %in% most_targeted, 1, 0)) %>% 
   select(-Genus, -sp)
+
+fish_tidy_resource_reef_only <- fish_tidy_resource %>% 
+  filter(Pin != "A") #Pin 14
 ```
 
 ## Wide data for ordination:
@@ -165,11 +210,16 @@ I've also made a wide version of the data frame for ordination:
 wide_maxn_df <- pivot_wider(fish_tidy, 
                              id_cols = c("Pin", "Block"),
                              names_from = Species, 
-                             values_from = MaxN)
-
-#make the NAs as 0's
-wide_maxn_df <- wide_maxn_df %>% 
+                             values_from = MaxN) %>% 
   mutate_all(~ifelse(is.na(.), 0, .))
+
+#make the version without 14 wide
+wide_maxn_df <- pivot_wider(reef_pins_fish_tidy, 
+                             id_cols = c("Pin", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN)%>% 
+  mutate_all(~ifelse(is.na(.), 0, .))
+
 ```
 
 Then used that one to re-make the long data frame with a presence column instead of abundance
@@ -202,7 +252,55 @@ presence_resource <- presence %>%
 
 # Data Vis
 
-Linda from Johanssen Lab reccommended to make a plot that is ordered by the most abundant fish near the seep and look for any patterns, so I went and made this plot a number of ways. First, I kept all the species and looked a just the average abundance at all pins, to see if the communities looked relatively similar in this way.
+Linda from Johanssen Lab recommended to make a plot that is ordered by the most abundant fish near the seep and look for any patterns, so I went and made this plot a number of ways. First, I kept all the species and looked a just the average abundance at all pins, to see if the communities looked relatively similar in this way.
+
+#### All species average abundance
+```{r}
+maxn_avg1 <- fish_tidy %>%
+  group_by(Species) %>%
+  summarize(avg_MaxN = sum(MaxN, na.rm = TRUE) / 8) %>% 
+  left_join(functional_groups, by = "Species") %>%
+  # Order families in descending alphabetical order and species alphabetically within each family
+  mutate(Family_order = factor(Family, levels = rev(sort(unique(Family)))),
+         Species_order = factor(Species, levels = sort(unique(Species)))) %>%
+  arrange(Family_order, Species) %>%
+  mutate(Species_order = factor(Species, levels = unique(Species))) # Update Species_order
+
+# Plot with hierarchical ordering and family names included
+ggplot(maxn_avg1, aes(y = Species_order, x = avg_MaxN, fill = Family)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) + # Adjust width for consistent bar size
+  labs(x = "Average MaxN", y = " ") +
+  theme_minimal() +
+#  geom_text(aes(label = Family), hjust = -0.2, size = 3, color = "black") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), # Rotate x-axis labels for readability
+        legend.position = "left") + # Remove the legend
+  scale_fill_fish_d(option = "Lepomis_megalotis")
+```
+
+#### with Facet:
+```{r}
+# Assuming `functional_groups` is your dataframe containing the 'Family' information
+maxn_avg1 <- fish_tidy %>%
+  group_by(Species) %>%
+  summarize(avg_MaxN = sum(MaxN, na.rm = TRUE) / 8) %>% 
+  left_join(functional_groups, by = "Species") %>%
+  # Order families in descending alphabetical order and species alphabetically within each family
+  mutate(Family_order = factor(Family, levels = rev(sort(unique(Family)))),
+         Species_order = factor(Species, levels = sort(unique(Species)))) %>%
+  arrange(Family_order, Species) %>%
+  mutate(Species_order = factor(Species, levels = unique(Species))) # Update Species_order
+
+# Plot with facet_grid
+ggplot(maxn_avg1, aes(y = Species_order, x = avg_MaxN, fill = Family)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) + # Adjust width for consistent bar size
+  labs(x = "Average MaxN", y = "Species", title = "Average MaxN of Each Species Across All Locations") +
+  theme_minimal() +
+  facet_grid(Family ~ ., scales = "free_y") + # Facet by Family with free y-axis
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), # Rotate x-axis labels for readability
+        legend.position = "none") + # Remove the legend
+  scale_fill_fish_d(option = "Lepomis_megalotis")
+```
+
 
 #### All species average abundance across gradient
 ```{r average maxn at each pin, fig.height= 10, fig.width=6}
@@ -236,14 +334,14 @@ top_species <- species_avg %>%
 
 maxn_avg_top <- maxn_avg %>%
   filter(Species %in% top_species)
-
-maxn_avg_top %>%
-  ggplot(aes(x = Species, y = avg_MaxN)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~ Pin) +
-  labs(y = "Average MaxN", x = "Block", title = "Average MaxN of Each Species Across Blocks by Pin") +
-  coord_flip()+
-  theme_minimal()
+# 
+# maxn_avg_top %>%
+#   ggplot(aes(x = Species, y = avg_MaxN)) +
+#   geom_bar(stat = "identity", position = "dodge") +
+#   facet_wrap(~ Pin) +
+#   labs(y = "Average MaxN", x = "Block", title = "Average MaxN of Each Species Across Blocks by Pin") +
+#   coord_flip()+
+#   theme_minimal()
 ```
 
 #### So, now I will order the pins by those most common at pin 14
@@ -251,7 +349,7 @@ maxn_avg_top %>%
 ```{r pin 14 most common, fig.height= 10, fig.width=6}
 # Step 1: Create a new column for avg_MaxN at Pin 14
 pin14_avg <- maxn_avg_top %>%
-  filter(Pin == 14) %>%
+  filter(Pin == "A") %>%
   dplyr::select(Species, avg_MaxN) %>%
   rename(MaxN_Pin14 = avg_MaxN)
 
@@ -294,24 +392,24 @@ This isn't showing the most obvious patterns, but there were only a few species 
 #### Most common species average abundance at each pin by distance to seep:
 
 ```{r by dist to seep, fig.height= 10, fig.width=6}
-maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL", "sd_Salinity")])
-
-pin_order <- maxn_explan %>%
-  distinct(Pin, dist_to_seep_m) %>%
-  filter(Pin != 13) %>%  # Exclude Pin 13
-  arrange(dist_to_seep_m) %>%
-  pull(Pin)
-
-maxn_explan <- maxn_explan %>%
-  mutate(Pin = factor(Pin, levels = pin_order)) 
-
-maxn_explan %>%
-  ggplot(aes(x = Species, y = avg_MaxN)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  facet_wrap(~ Pin) +
-  labs(y = "Average MaxN", x = "Species", title = "Average Abundance of Each Species at Sampling Locations") +
-  coord_flip()+
-  theme_minimal()
+# maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL", "sd_Salinity")])
+# 
+# pin_order <- maxn_explan %>%
+#   distinct(Pin, dist_to_seep_m) %>%
+#   filter(Pin != 13) %>%  # Exclude Pin 13
+#   arrange(dist_to_seep_m) %>%
+#   pull(Pin)
+# 
+# maxn_explan <- maxn_explan %>%
+#   mutate(Pin = factor(Pin, levels = pin_order)) 
+# 
+# maxn_explan %>%
+#   ggplot(aes(x = Species, y = avg_MaxN)) +
+#   geom_bar(stat = "identity", position = "dodge") +
+#   facet_wrap(~ Pin) +
+#   labs(y = "Average MaxN", x = "Species", title = "Average Abundance of Each Species at Sampling Locations") +
+#   coord_flip()+
+#   theme_minimal()
 ```
 
 To see if maybe a nutrient parameter would be good descriptor, I do this also by the low tide mean silicate
@@ -319,9 +417,6 @@ To see if maybe a nutrient parameter would be good descriptor, I do this also by
 #### Most common species average abundance across the gradient of low tide mean silicate
 
 ```{r by dist to silicate, fig.height= 10, fig.width=6}
-explan <- explan %>%
-  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
-
 maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "dist_to_seep_m", "Low_Tide_Mean_Silicate_umolL")])
 
 pin_order <- maxn_explan %>%
@@ -346,9 +441,6 @@ maxn_explan %>%
 Nutrient delivery quantified as a pc axis I got from the low tide mean of major nutrients across the gradient.This axis captures 72.87298% of the variation in mean low tide TA, Phosphate, Silicate, and N + N. Higer numbers on this axis indicate higher values of these variables.
 
 ```{r by pulse pc 1, fig.height= 10, fig.width=6}
-explan <- explan %>%
-  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
-
 maxn_explan <- left_join(maxn_avg_top, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL")])
 
 pin_order <- maxn_explan %>%
@@ -375,8 +467,8 @@ maxn_explan %>%
 
 ```{r}
 species_richness <- fish_tidy %>%
-  filter(!Pin == "13") %>% 
-  filter(!Pin == "14") %>% 
+#  filter(!Pin == "13") %>% #Already removed
+  filter(!Pin == "A") %>% #Pin 14
   group_by(Pin, On.Adjacent, Block) %>%
   summarise(Richness = n_distinct(Species[MaxN > 0]))
 
@@ -412,8 +504,8 @@ grid.arrange(p1, p2, p3, nrow = 1)
 #### Calculating diversity against gradient metrics:
 ```{r}
 species_diversity <- fish_tidy %>%
-  filter(!Pin == "13") %>% 
-  filter(!Pin == "14") %>% 
+#  filter(!Pin == "13") %>% #already removed
+  filter(!Pin == "A") %>%  #Pin 14
   group_by(Pin, On.Adjacent, Block) %>%
   summarise(Diversity = diversity(MaxN, index = "shannon"))
 
@@ -462,9 +554,12 @@ Sites<-wide_maxn_df[c(1)]
 
 I've been going back and forth on the transformation here, and am currently going with hellinger instead of vegan's default, the wisconsin. This is because, from my limited understanding, the hellinger better handles cases where species are not present in multiple sites (known as double zeros). 
 
+UPDATE, after meeting with Megan
+Beacuse this is really one site, and we're thinking about fish movement patterns, we're doing a species maximum standardization.
+
 ```{r transform}
 ##hellinger transformation is a common transformation with community data when you have a lot of zeros
-Fish_com <- decostand(Fish2, method = "hellinger" )
+Fish_com <- decostand(Fish2, method = "max" )
 
 ##constructing the dissimilarity matrix, using bray -curtis "how differently are they different"
 mat.dis_fish <- vegdist(Fish_com,method="bray")
@@ -732,7 +827,7 @@ I want to try to do this to look at non-linear distribution along the gradient. 
 
 For now, I'm setting up the code using species driving differences in the nmds
 
-```{r gam tidy}
+```{r gam tidy IT HAS TO BE HERE BECAUSE OF THE SIG SP IN NMDS SORRY}
 gam_species <- sig.spp.scrs$Species
 
 gam_fish <- presence %>% 
@@ -752,19 +847,19 @@ resource_gam$species <- as.factor(resource_gam$species)
 
 
 ```{r}
-gam.sig.fish <- gam(Presence ~ s(CV_Salinity) + s(species, bs = "re"),
-                    data = gam_fish,
-                    family = binomial(link = "logit"))
-
-summary(gam.sig.fish)
-
-mgcv::plot.gam(gam.sig.fish)
-
+# gam.sig.fish <- gam(Presence ~ s(CV_Salinity) + s(species, bs = "re"),
+#                     data = gam_fish,
+#                     family = binomial(link = "logit"))
+# 
+# summary(gam.sig.fish)
+# 
+# mgcv::plot.gam(gam.sig.fish)
+# 
 gam.sig.fish = gam(Presence ~ s(dist_to_seep_m, by = species), data = gam_fish, family = binomial)
 
 summary(gam.sig.fish)
 
-par(mar = c(1, 1, 2, 1)) 
+par(mar = c(1, 1, 2, 1))
 mgcv::plot.gam(gam.sig.fish, pages = 10)
 
 ```
@@ -781,7 +876,7 @@ mgcv::plot.gam(res.gam.sig.fish, pages = 10)
 This code didn't really work as intended. But, when I talked to Kyle Edwards, he suggested that I make a different gam for each species. This is more or less a preliminary step to see if a linear fit is good enough for this data:
 
 
-```{r presence different gam for each species}
+```{r presence different gam for each fished species}
 # Create an empty list to store the models and plots
 models <- list()
 plots <- list()
