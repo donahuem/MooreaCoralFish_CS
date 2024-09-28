@@ -22,6 +22,7 @@ library(stringr)
 library(lme4)
 library(mgcv)
 library(gridExtra)
+library(forcats) #needed for reversing factor levels
 ```
 
 
@@ -37,8 +38,6 @@ db <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_D
 
 ### TIDY DATA:
 
-
-
 ```{r changing cowtag to a letter}
 ## FOR MAKING QGIS MAPS, NEEDED TO CODE SOMEWHERE
 fish_map_data <- db[c("CowTagID", "lat", "lon","Location", "dist_to_seep_m")] %>%
@@ -53,16 +52,18 @@ fish_map_data <- db[c("CowTagID", "lat", "lon","Location", "dist_to_seep_m")] %>
     CowTagID == "VSEEP" ~ "SEEP",
     TRUE ~ toupper(letters[rank(dist_to_seep_m_temp)])
   )) %>%
-  select(-dist_to_seep_m_temp)
-#   
+  dplyr::select(-dist_to_seep_m_temp)
+#
 
-map_data_join <- fish_map_data %>% 
-  dplyr::filter(!(CowTagID == "VSEEP")) %>% 
+map_data_join <- fish_map_data %>%
+  dplyr::filter(!(CowTagID == "VSEEP")) %>%
   mutate(Pin = sub("^V", "", CowTagID))%>%
   mutate(Pin = as.numeric(Pin))
 
 maxn <- left_join(map_data_join[,c("Pin", "alphabetical")], maxn, by = join_by(Pin))
 maxn$Pin <- maxn$alphabetical
+
+#write_csv(fish_map_data, here("Data", "fish_map_data.csv"))
 ```
 
 ## Cleaning up explan
@@ -114,7 +115,8 @@ subset_maxn_no_unk <- subset_maxn %>%
   filter(!str_detect(Species, "nknown")) %>% #anything that has nknown for unknown species
   filter(!(Species == "Bothus spp")) %>%  #goodbye flounder
   filter(!(Species == "Scorpaenopsis diabolus")) %>% #scorpoionfish are crpytic
-  filter(!(Species == "Gymnothorax javanicus")) #sorry Julie
+  filter(!(Species == "Gymnothorax javanicus")) %>%  #sorry Julie
+  filter(!(Species == "Echidna nebulosa"))
 ```
 
 Since we could count some species as distinct individuals by life stages, I have combined those counts together here:
@@ -196,7 +198,7 @@ fish_tidy_resource <- fish_tidy %>%
   separate(Species, into = c("Genus", "sp"), sep = " ",remove = FALSE) %>% 
   mutate(Resource = if_else(Genus %in% rassweiler_resource, 1, 0))%>% 
   mutate(Most_targeted = if_else(Genus %in% most_targeted, 1, 0)) %>% 
-  select(-Genus, -sp)
+  dplyr::select(-Genus, -sp)
 
 fish_tidy_resource_reef_only <- fish_tidy_resource %>% 
   filter(Pin != "A") #Pin 14
@@ -208,13 +210,13 @@ I've also made a wide version of the data frame for ordination:
 ```{r wide data}
 #make it wide
 wide_maxn_df <- pivot_wider(fish_tidy, 
-                             id_cols = c("Pin", "Block"),
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
                              names_from = Species, 
                              values_from = MaxN) %>% 
   mutate_all(~ifelse(is.na(.), 0, .))
 
 #make the version without 14 wide
-wide_maxn_df <- pivot_wider(reef_pins_fish_tidy, 
+wide_maxn_df_no_14 <- pivot_wider(reef_pins_fish_tidy, 
                              id_cols = c("Pin", "Block"),
                              names_from = Species, 
                              values_from = MaxN)%>% 
@@ -224,7 +226,7 @@ wide_maxn_df <- pivot_wider(reef_pins_fish_tidy,
 
 Then used that one to re-make the long data frame with a presence column instead of abundance
 ```{r long data with presence}
-species <- names(wide_maxn_df[,c(3:ncol(wide_maxn_df))])
+species <- names(wide_maxn_df[,c(4:ncol(wide_maxn_df))])
 
 fish_long <- pivot_longer(wide_maxn_df,
                           cols = species,
@@ -246,7 +248,7 @@ presence_resource <- presence %>%
   separate(species, into = c("Genus", "sp"), sep = " ",remove = FALSE) %>% 
   mutate(Resource = if_else(Genus %in% rassweiler_resource, 1, 0))%>% 
   mutate(Most_targeted = if_else(Genus %in% most_targeted, 1, 0)) %>% 
-  select(-Genus, -sp)
+  dplyr::select(-Genus, -sp)
 ```
 
 
@@ -254,28 +256,54 @@ presence_resource <- presence %>%
 
 Linda from Johanssen Lab recommended to make a plot that is ordered by the most abundant fish near the seep and look for any patterns, so I went and made this plot a number of ways. First, I kept all the species and looked a just the average abundance at all pins, to see if the communities looked relatively similar in this way.
 
+
 #### All species average abundance
+```{r}
+maxn_avg1 <- fish_tidy %>%
+  group_by(Species) %>%
+  summarize(avg_MaxN = sum(MaxN[MaxN > 0], na.rm = TRUE) / sum(MaxN > 0, na.rm = TRUE)) %>% 
+  left_join(functional_groups, by = "Species") %>%
+  # Order families in descending alphabetical order and species alphabetically within each family
+  mutate(Family_order = factor(Family, levels = sort(unique(Family))),
+         Species_order = factor(Species, levels = sort(unique(Species)))) %>%
+  arrange(Family_order, Species) %>%
+  mutate(Species_order = factor(Species, levels = unique(Species)))%>% # Update Species_order
+  mutate(Species_order = fct_rev(Species_order)) # Reverse Species_order because it was plotting it backwards
+
+# Plot with hierarchical ordering and family names included
+plot1 <- ggplot(maxn_avg1, aes(y = Species_order, x = avg_MaxN, fill = Family)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.7) + # Adjust width for consistent bar size
+  labs(x = "Average MaxN", y = " ") +
+  theme_minimal() +
+  scale_fill_fish_d(option = "Lepomis_megalotis")+
+  theme(axis.title.x = element_text(size=18),
+        axis.title.y = element_text(size=18), 
+        plot.title = element_text(size=18),
+        legend.position = "none",
+        plot.background = element_rect(fill = "white"),
+        panel.border = element_blank()
+)
+ggsave(filename = "output/maxn_overview.png", plot1, height = 10, width = 4)
+```
+
+#### Dendrogram?
 ```{r}
 maxn_avg1 <- fish_tidy %>%
   group_by(Species) %>%
   summarize(avg_MaxN = sum(MaxN, na.rm = TRUE) / 8) %>% 
   left_join(functional_groups, by = "Species") %>%
   # Order families in descending alphabetical order and species alphabetically within each family
-  mutate(Family_order = factor(Family, levels = rev(sort(unique(Family)))),
+  mutate(Family_order = factor(Family, levels = sort(unique(Family))),
          Species_order = factor(Species, levels = sort(unique(Species)))) %>%
   arrange(Family_order, Species) %>%
-  mutate(Species_order = factor(Species, levels = unique(Species))) # Update Species_order
+  mutate(Species_order = factor(Species, levels = unique(Species)), # Update Species_order
+         Species_order_num = as.numeric(Species_order)) # Add numerical factor levels for Species_order
 
-# Plot with hierarchical ordering and family names included
-ggplot(maxn_avg1, aes(y = Species_order, x = avg_MaxN, fill = Family)) +
-  geom_bar(stat = "identity", position = "dodge", width = 0.7) + # Adjust width for consistent bar size
-  labs(x = "Average MaxN", y = " ") +
-  theme_minimal() +
-#  geom_text(aes(label = Family), hjust = -0.2, size = 3, color = "black") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1), # Rotate x-axis labels for readability
-        legend.position = "left") + # Remove the legend
-  scale_fill_fish_d(option = "Lepomis_megalotis")
 ```
+
+
+
+
 
 #### with Facet:
 ```{r}
@@ -538,6 +566,63 @@ p3 <- species_diversity_explan %>%
 grid.arrange(p1, p2, p3, nrow = 1)
 ```
 
+### Evenness
+```{r}
+species_evenness <- fish_tidy %>%
+  filter(!Pin == "A") %>%  #Pin 14
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(
+    Shannon = diversity(MaxN, index = "shannon"),  # Calculate Shannon diversity
+    Richness = specnumber(MaxN),  # Calculate species richness
+    Evenness = Shannon / log(Richness)  # Calculate evenness
+  )
+
+species_evenness_explan <- left_join(species_evenness, explan[,c("Pin", "pulse_pc1", "Low_Tide_Mean_Silicate_umolL","dist_to_seep_m")])
+
+p3 <- species_evenness_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Evenness)) +
+#  geom_text(aes(label = Pin))+
+  geom_point() +
+#  geom_smooth() +
+  theme_minimal()
+```
+
+
+### what to show at AFS:
+
+```{r}
+p1 <- species_richness_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Richness)) +
+#  geom_text(aes(label = Pin))+
+  geom_point() +
+#  geom_smooth() +
+  theme_minimal()+
+  labs(x= " ",
+       y = "Fish Taxonomic Richness")
+
+p2 <- species_diversity_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Diversity)) +
+#  geom_text(aes(label = Pin))+
+  geom_point() +
+  geom_smooth(method = "glm",color = "#8FA9B1") +
+  theme_minimal() +
+  labs(x= " ",
+       y = "Fish Taxonomic Diversity")
+
+p3 <- species_evenness_explan %>%
+  ggplot(aes(x = dist_to_seep_m, y = Evenness)) +
+#  geom_text(aes(label = Pin))+
+  geom_point() +
+#  geom_smooth() +
+  theme_minimal()+
+  labs(x= "Distance from Seep",
+       y = "Fish Taxonomic Evenness")
+
+alpha_diversity_fig <- grid.arrange(p1, p2, p3, nrow = 3)
+
+#ggsave(filename = "output/alpha_diversity_fig.png", alpha_diversity_fig, height = 10, width = 5)
+```
+
 ## NMDS Non-Dimensional Ordination
 Code from Linda:
 
@@ -549,37 +634,37 @@ Fish2 <-wide_maxn_df[c(3:ncol(wide_maxn_df))]
 ##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
 Sites<-wide_maxn_df[c(1)]
 #str(Sites)
-```
 
+#Transform
 
-I've been going back and forth on the transformation here, and am currently going with hellinger instead of vegan's default, the wisconsin. This is because, from my limited understanding, the hellinger better handles cases where species are not present in multiple sites (known as double zeros). 
-
-UPDATE, after meeting with Megan
-Beacuse this is really one site, and we're thinking about fish movement patterns, we're doing a species maximum standardization.
-
-```{r transform}
 ##hellinger transformation is a common transformation with community data when you have a lot of zeros
 Fish_com <- decostand(Fish2, method = "max" )
+#Fish_com <- decostand(Fish2, method = "hellinger" )
 
 ##constructing the dissimilarity matrix, using bray -curtis "how differently are they different"
 mat.dis_fish <- vegdist(Fish_com,method="bray")
 ```
 
+
 ```{r}
 set.seed(123)
 
-nmds = metaMDS(mat.dis_fish,k=2, trymax=500, distance = "bray")
+nmds = metaMDS(mat.dis_fish,k=3, trymax=500, distance = "bray")
 ##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear..
 stressplot(nmds) 
 nmds
 
+#noam says you have to add the species back in
+sppscores(nmds) <- Fish_com
+
 ##Stress Value = how well doe your NMDS represent reality (<0.2)
 plot(nmds, type = "text")
 plot(nmds)
+
 ```
 
 ```{r}
-data.scores = as.data.frame(scores(nmds))
+data.scores = as.data.frame(scores(nmds, "site"))
 #including the factors 
 
 data.scores$Site = Sites$Pin
@@ -603,8 +688,123 @@ pvals <- data.spp.fit$vectors$pvals
 spp.scrs$pval <- pvals
 
 # Subset data to show species significant at 0.05
-sig.spp.scrs <- subset(spp.scrs, pval <= 0.05)
+sig.spp.scrs1 <- subset(spp.scrs, pval <= 0.05)
+#make more strict because showing too many species
+sig.spp.scrs <- subset(spp.scrs, pval <= 0.01)
+# sig.spp.scrs <- spp.scrs
+# sig.spp.scrs <- subset(spp.scrs, pvals<=0.05) #subset data to show species significant at 0.05
 
+head(sig.spp.scrs)
+```
+
+### Plot
+
+```{r}
+##set theme!
+mytheme3<-theme(axis.title = element_text(size = 12, colour = "black"), 
+                panel.background = element_blank(), 
+                panel.border = element_rect(fill = NA, colour = "black"), 
+                axis.ticks = element_blank(), axis.text = element_text(size = 12), 
+                legend.key = element_blank(), 
+                legend.title = element_text(size = 12, colour = "black"), 
+                legend.text = element_text(size = 12, colour = "black"))
+```
+
+
+### AFS
+```{r}
+#code that really just sets up the axes
+AFS_nmds <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(colour = "Site") +
+  ggtitle("NMDS") +  
+  mytheme3 +
+  #code that adds the bubbles
+  stat_ellipse(
+    aes(fill = Site),
+    geom = "polygon",
+    alpha = .15,
+    type = "t",
+    level = 0.95,
+    linetype = 3
+  ) + 
+  #code that adds the points
+  geom_point(
+  data = data.scores,
+  aes(colour = Site, shape = Site),
+  size = 3,
+  alpha = 0.8
+) +
+  scale_shape_manual(values = 1:18) +
+  #code that adds the species labels
+  ggrepel::geom_text_repel(
+    data = sig.spp.scrs,
+    aes(x = NMDS1, y = NMDS2, label = Species),
+    cex = 3,
+    direction = "both",
+    segment.size = 0
+  )+
+  ggtitle("Unconstrained Ordination of Fish Communities Along an SGD Gradient")
+
+ggsave("output/NMDS_sig_spp_AFS.png", AFS_nmds, width=10, height=10)
+```
+
+## NMDS with no 14
+```{r speciesdatause no 14}
+##make a dataframe with ONLY your fish data
+Fish2 <- wide_maxn_df_no_14[c(3:ncol(wide_maxn_df_no_14))]
+
+##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
+Sites<-wide_maxn_df_no_14[c(1)]
+
+#transform
+##hellinger transformation is a common transformation with community data when you have a lot of zeros
+Fish_com <- decostand(Fish2, method = "max" )
+#Fish_com <- decostand(Fish2, method = "hellinger" )
+
+##constructing the dissimilarity matrix, using bray -curtis "how differently are they different"
+mat.dis_fish <- vegdist(Fish_com,method="bray")
+```
+
+```{r nmds with no 14}
+set.seed(123)
+
+nmds = metaMDS(mat.dis_fish, k=3, trymax=500, distance = "bray")
+##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear..
+stressplot(nmds) 
+nmds
+
+#noam says you have to add the species back in
+sppscores(nmds) <- Fish_com
+
+##Stress Value = how well doe your NMDS represent reality (<0.2)
+# plot(nmds, type = "text")
+# plot(nmds)
+
+data.scores = as.data.frame(scores(nmds, "site"))
+#including the factors 
+data.scores$Site = Sites$Pin
+#data.scores$Site <- factor(data.scores$Site, levels = c(1:223))
+# head(data.scores)
+
+data.spp.fit <- envfit(nmds, Fish2, permutations = 999)
+
+head(data.spp.fit)
+
+spp.scrs <- as.data.frame(scores(data.spp.fit, display = "vectors")) #save species intrinsic values into dataframe
+spp.scrs <- cbind(spp.scrs, Species = rownames(spp.scrs)) #add species names to dataframe
+
+#head(spp.scrs)
+# Extract p-values from the envfit result
+pvals <- data.spp.fit$vectors$pvals
+# Add the p-values to the spp.scrs dataframe
+spp.scrs$pval <- pvals
+
+# Subset data to show species significant at 0.05
+sig.spp.scrs <- subset(spp.scrs, pval <= 0.05)
+#make more strict because showing too many species
+sig.spp.scrs <- subset(spp.scrs, pval <= 0.01)
 # sig.spp.scrs <- spp.scrs
 # sig.spp.scrs <- subset(spp.scrs, pvals<=0.05) #subset data to show species significant at 0.05
 
@@ -612,33 +812,73 @@ head(sig.spp.scrs)
 ```
 
 ```{r}
-##set theme!
-mytheme3<-theme(axis.title = element_text(size = 12, colour = "black"), 
-                panel.background = element_blank(), panel.border = element_rect(fill = NA, colour = "black"), 
-                axis.ticks = element_blank(), axis.text = element_text(size = 12), legend.key = element_blank(), 
-                legend.title = element_text(size = 12, colour = "black"), 
-                legend.text = element_text(size = 12, colour = "black"))
+#code that really just sets up the axes
+AFS_nmds_no_14 <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(colour = "Site") +
+  ggtitle("NMDS") +  
+  mytheme3 +
+  #code that adds the bubbles
+  stat_ellipse(
+    aes(fill = Site),
+    geom = "polygon",
+    alpha = .15,
+    type = "t",
+    level = 0.95,
+    linetype = 3
+  ) + 
+  #code that adds the points
+  geom_point(
+  data = data.scores,
+  aes(colour = Site, shape = Site),
+  size = 3,
+  alpha = 0.8
+) +
+  scale_shape_manual(values = 1:18) +
+  #code that adds the species labels
+  ggrepel::geom_text_repel(
+    data = sig.spp.scrs,
+    aes(x = NMDS1, y = NMDS2, label = Species),
+    cex = 3,
+    direction = "both",
+    segment.size = 0
+  )+
+  ggtitle("Unconstrained Ordination of Fish Communities Along an SGD Gradient")
+
+ggsave("output/NMDS_sig_spp_AFS_no_14.png", AFS_nmds_no_14, width=10, height=10)
 ```
 
+#### others
 ```{r}
-library(viridis)
-gg2 <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2))+ 
-  scale_color_viridis(discrete = TRUE, option = "D")+
-  scale_fill_viridis(discrete = TRUE)+
-  labs(colour = "Site")+
- ggtitle("NMDS")+  mytheme3
+gg2 <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(colour = "Site") +
+  ggtitle("NMDS") +  mytheme3
 
 data.scores$Site <- as.factor(data.scores$Site)
 
-g2<-gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.8)+
-  #geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
-             #  data = spp.scrs)+
-  ggrepel::geom_text_repel(data = sig.spp.scrs, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.25) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
-
-g2 <- g2 + scale_shape_manual(values = 1:20)  # Assuming there are 20 unique sites
+g2 <- gg2 + geom_point(
+  data = data.scores,
+  aes(colour = Site, shape = Site),
+  size = 3,
+  alpha = 0.8
+) +
+  scale_shape_manual(values = 1:18) + # Assuming there are 20 unique sites
+  #geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2),
+  #  data = spp.scrs)+
+  ggrepel::geom_text_repel(
+    data = sig.spp.scrs,
+    aes(x = NMDS1, y = NMDS2, label = Species),
+    cex = 3,
+    direction = "both",
+    segment.size = 0
+  ) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
 
 g2
 ```
+
 
 ```{r FOR MACKENZIE!!!}
 g3 <- gg2+geom_point(data = data.scores, aes(colour = Site, shape = Site),size = 3, alpha = 0.8)+ scale_shape_manual(values = 1:20)
@@ -648,20 +888,45 @@ g3
 ```
 
 ```{r}
-gg1 =ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2))+ 
-  scale_color_viridis(discrete = TRUE, option = "D")+
-  scale_fill_viridis(discrete = TRUE)+
-  labs(colour = "Reef.zone")+
-  stat_ellipse(aes(fill = Site), geom = "polygon", alpha = .4,
-               type="t",level = 0.95,linetype = 3)+ ggtitle("My NMDS")+  mytheme3
+gg1 = ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
+  scale_color_viridis(discrete = TRUE, option = "D") +
+  scale_fill_viridis(discrete = TRUE) +
+  labs(colour = "Reef.zone") +
+  stat_ellipse(
+    aes(fill = Site),
+    geom = "polygon",
+    alpha = .15,
+    type = "t",
+    level = 0.95,
+    linetype = 3
+  ) + ggtitle("Unconstrained Ordination of Fish Communities Along an SGD Gradient") +  mytheme3
 
 
-g1<- gg1+
-  geom_point(data = data.scores, aes(shape = Site),size = 3, alpha = 0.8)+
-  geom_segment(aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
-               data = spp.scrs, size =0.5, alpha = 0.8, colour = "grey30")+
-  scale_shape_manual(values = 1:20)+
-  ggrepel::geom_text_repel(data = spp.scrs, aes(x=NMDS1, y=NMDS2, label = Species), cex = 3, direction = "both", segment.size = 0.25) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
+g1 <- gg1 +
+  geom_point(data = data.scores,
+             aes(shape = Site),
+             size = 3,
+             alpha = 0.8) +
+  scale_shape_manual(values = 1:18) +
+  # geom_segment(
+  #   aes(
+  #     x = 0,
+  #     y = 0,
+  #     xend = NMDS1,
+  #     yend = NMDS2
+  #   ),
+  #   data = spp.scrs,
+  #   size = 0.5,
+  #   alpha = 0.8,
+  #   colour = "grey30"
+  # ) +
+  ggrepel::geom_text_repel(
+    data = spp.scrs,
+    aes(x = NMDS1, y = NMDS2, label = Species),
+    cex = 3,
+    direction = "both",
+    segment.size = 0
+  ) #add labels for species, use ggrepel::geom_text_repel so that labels do not overlap
 
 g1
 ```
@@ -735,17 +1000,16 @@ I started with using the pulse pc axis, the low tide mean silicate, the distance
 
 Tests revealed the shore distance didn't matter (permutation test p = 0.555), so I changed this to only use the pulse pc axis, the low tide mean silicate, the distance to seep, and the distance to shore:
 ```{r Distance based redundancy analysis}
-# ##hellinger transformation is a common transformation with community data when you have a lot of zeros
 Species_only <-wide_maxn_df[c(3:ncol(wide_maxn_df))]
-transformed_communities <- decostand(Species_only, method = "hellinger" )
+transformed_communities <- decostand(Species_only, method = "max") #using max not hellinger
 
 # Extract the 'Pin' column from wide_maxn_df to merge with transformed data
 Pin_column <- wide_maxn_df["Pin"]
 
 # Combine the Pin column with the transformed species data
 transformed_communities_with_pin <- cbind(Pin_column, transformed_communities)
-transformed_communities_with_explan <- left_join(transformed_communities_with_pin, explan[,c("Pin", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Silicate_umolL", "dist_to_seep_m", "Low_Tide_Mean_NN_umolL","Low_Tide_Mean_Ammonia_umolL")], by = join_by(Pin))
-cap = capscale(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + dist_to_seep_m + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL, data = transformed_communities_with_explan, dist = "bray")
+transformed_communities_with_explan <- left_join(transformed_communities_with_pin, explan[,c("Pin", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Silicate_umolL", "dist_to_seep_m", "Low_Tide_Mean_NN_umolL","Low_Tide_Mean_Ammonia_umolL", "meanRugosity")], by = join_by(Pin))
+cap = capscale(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + dist_to_seep_m + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + meanRugosity, data = transformed_communities_with_explan, dist = "bray")
 cap
 ```
 
@@ -762,7 +1026,7 @@ We can get the variance explained by these axes from summary:
 summary(cap)$cont
 ```
 
-The first CAP axis explains 6.97% of the constrained community variation, and the second axis explains 4.34%. Therefore, this represents 2.07% of the total community variation. 
+The first CAP axis explains 7.8% of the constrained community variation, and the second axis explains 4.34%. Therefore, this represents 12.475% of the total community variation. 
 
 Though this is already pretty poor, I might as well finish it out as a coding exercise. The loading coefficients for the explanatory variables on the constrained axes are: 
 
@@ -790,12 +1054,56 @@ Interestingly, all the axes are coming up as significant contributors to this va
 
 # PERMANOVA:
 ```{r}
-PERMANOVA = adonis2(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + dist_to_seep_m + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL, data = transformed_communities_with_explan, dist = "bray", by = 'margin')
+PERMANOVA = adonis2(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + meanRugosity, data = transformed_communities_with_explan, dist = "bray", by = 'margin')
 
 PERMANOVA
 ```
 
+```{r}
+# Perform CAP analysis (Constrained PCoA)
+cap_result <- capscale(transformed_communities ~ Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_Silicate_umolL + 
+                       Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Ammonia_umolL + meanRugosity, 
+                       data = transformed_communities_with_explan, dist = "bray")
+
+# Extract sample scores (site scores) and predictor scores (biplot arrows)
+site_scores <- scores(cap_result, display = "sites")
+biplot_scores <- scores(cap_result, display = "bp")
+
+# Create data frames for ggplot
+site_scores_df <- as.data.frame(site_scores)
+biplot_scores_df <- as.data.frame(biplot_scores)
+
+# Plot CAP1 vs CAP2 using ggplot2
+ggplot() +
+  geom_point(data = site_scores_df, aes(x = CAP1, y = CAP2), color = "#287D8E") +  # Sample points
+  geom_segment(data = biplot_scores_df, aes(x = 0, y = 0, xend = CAP1, yend = CAP2), 
+               arrow = arrow(length = unit(0.2, "cm")), color = "#084439") +  # Predictor vectors
+  geom_text(data = biplot_scores_df, aes(x = CAP1, y = CAP2, label = rownames(biplot_scores_df)),
+            color = "#084439", hjust = 0.5, vjust = 1.5) +  # Predictor labels
+  labs(title = "Constrained Analysis of Principal Coordinates (CAP)", 
+       x = "CAP1", y = "CAP2") +
+  theme_linedraw()
+```
+
 Again, all of our variables are significant contributors to community composition, though with very low r2.
+
+## MANTEL TEST
+```{r}
+dist_explan_df <-explan[,c("Pin", "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Salinity", "Low_Tide_Mean_Temperature", "Low_Tide_Mean_TA", "Low_Tide_Mean_pH", "Low_Tide_Mean_Silicate_umolL", "dist_to_seep_m")]
+dist_response_df <- transformed_communities_with_pin %>% 
+  group_by(Pin) %>%
+  summarise(across(everything(), mean))
+```
+
+```{r}
+dist.explanatory <- dist(scale(x = dist_explan_df[,c(2:ncol(dist_explan_df))], scale = T, center = T), method = "euclidean")
+dist.response <- dist(scale(x = dist_response_df[,c(2:ncol(dist_response_df))], scale = T, center = T), method = "euclidean")
+```
+
+```{r}
+response_by_explan <- mantel(dist.response, dist.explanatory, method = "spearman", permutations = 900, na.rm = TRUE)
+response_by_explan
+```
 
 # Mixed Models for Multivariate Data
 
@@ -821,18 +1129,21 @@ anova(mod.salinity, mod.no.salinity)
 
 This doesn't look great, but the technique is interesting.
 
-# GAM
+# GAMLAND
 
 I want to try to do this to look at non-linear distribution along the gradient. I think some species might be non-linear as they might avoid the highly fresh region. I think this might be easiest to look at if I only looked at certain species of interest, which I still would like to define.
 
 For now, I'm setting up the code using species driving differences in the nmds
 
 ```{r gam tidy IT HAS TO BE HERE BECAUSE OF THE SIG SP IN NMDS SORRY}
-gam_species <- sig.spp.scrs$Species
+gam_species <- sig.spp.scrs1$Species
 
-gam_fish <- presence %>% 
-  filter(species %in% gam_species) %>% 
-  left_join(explan[,c("Pin", "dist_to_seep_m")],by = join_by(Pin))
+gam_fish <- presence %>%
+  filter(species %in% gam_species) %>%
+  left_join(explan[, c("Pin", "dist_to_seep_m","meanRugosity")], by = "Pin") %>%
+  left_join(distinct(fish_tidy[, c("Block", "On.Adjacent")]), by = "Block") %>% 
+  mutate(Pin = as.factor(Pin)) %>% 
+  mutate(On.Adjacent = as.factor(On.Adjacent))
 
 gam_fish$species <- as.factor(gam_fish$species)
 
@@ -846,7 +1157,7 @@ resource_gam$species <- as.factor(resource_gam$species)
 ```
 
 
-```{r}
+```{r overall gam?}
 # gam.sig.fish <- gam(Presence ~ s(CV_Salinity) + s(species, bs = "re"),
 #                     data = gam_fish,
 #                     family = binomial(link = "logit"))
@@ -864,7 +1175,7 @@ mgcv::plot.gam(gam.sig.fish, pages = 10)
 
 ```
 
-```{r}
+```{r resource fish gam}
 res.gam.sig.fish = gam(Presence ~ s(dist_to_seep_m, by = species), data = resource_gam, family = binomial)
 
 summary(res.gam.sig.fish)
@@ -887,7 +1198,8 @@ for(spec in unique(resource_gam$species)) {
   species_data <- subset(resource_gam, species == spec)
   
   # Fit the GAM for the current species
-  gam_model <- gam(Presence ~ s(dist_to_seep_m), data = species_data, family = binomial)
+ gam_model <- gam(Presence ~ s(dist_to_seep_m, k = 3) ,
+                 data = species_data, family = binomial)
   
   # Store the model in the list
   models[[spec]] <- gam_model
@@ -903,7 +1215,7 @@ for(spec in unique(resource_gam$species)) {
   # Plot the results
   p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
     geom_line() +
-    labs(title = paste(spec)) +
+    labs(title = paste(spec), x="Distance from seep") +
     theme_minimal()+
   theme(plot.title = element_text(face = "italic"))
   
@@ -912,7 +1224,7 @@ for(spec in unique(resource_gam$species)) {
 }
 
 # Arrange all plots together in a grid
-do.call(grid.arrange, c(plots, ncol = 4))
+do.call(grid.arrange, c(plots, ncol = 5))
 ```
 
 ```{r different ABUNDANCE gam for each resource species}
@@ -926,7 +1238,7 @@ for(spec in unique(resource_gam$species)) {
   species_data <- subset(resource_gam, species == spec)
   
   # Fit the GAM for the current species
-  gam_model <- gam(Abundance ~ s(dist_to_seep_m), data = species_data, family = nb(), 
+  gam_model <- gam(Abundance ~ s(dist_to_seep_m, k =3), data = species_data, family = nb(), 
                  control = gam.control(maxit = 100, epsilon = 1e-6))
   
   # Store the model in the list
@@ -979,7 +1291,7 @@ for(spec in unique(gam_fish$species)) {
   species_data <- subset(gam_fish, species == spec)
   
   # Fit the GAM for the current species
-  gam_model <- gam(Presence ~ s(dist_to_seep_m), data = species_data, family = binomial)
+  gam_model <- gam(Presence ~ s(dist_to_seep_m, k=3), data = species_data, family = binomial)
   
   # Store the model in the list
   models[[spec]] <- gam_model
@@ -1004,5 +1316,252 @@ for(spec in unique(gam_fish$species)) {
 }
 
 # Arrange all plots together in a grid
-do.call(grid.arrange, c(plots, ncol = 4))
+do.call(grid.arrange, c(plots, ncol = 5))
 ```
+
+```{r trying code with random effects}
+# Create an empty list to store the models and plots
+models <- list()
+plots <- list()
+
+# Loop over each unique species
+for(spec in unique(resource_gam$species)) {
+  # Subset the data for the current species
+  species_data <- subset(resource_gam, species == spec)
+  
+  # Fit the GAM with random effects for Pin and On.Adjacent
+  gam_model <- gamm(Presence ~ s(dist_to_seep_m, k = 3),
+                    random = list(Pin = ~1, On.Adjacent = ~1),
+                    data = species_data, family = binomial)
+  
+  # Store the model in the list
+  models[[spec]] <- gam_model
+  
+  # Create a data frame for predictions
+  pred_data <- data.frame(
+    dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100),
+    Pin = unique(species_data$Pin)[1],  # Set to a representative value or average
+    On.Adjacent = unique(species_data$On.Adjacent)[1]  # Set to a representative value or average
+  )
+  
+  # Predict the presence probability
+  pred_data$Presence <- predict(gam_model$gam, newdata = pred_data, type = "response")
+  
+  # Plot the results
+  p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
+    geom_line() +
+    labs(title = paste(spec), x="Distance from seep") +
+    theme_minimal() +
+    theme(plot.title = element_text(face = "italic"))
+  
+  # Store the plot in the list
+  plots[[spec]] <- p
+}
+
+# Arrange all plots together in a grid
+do.call(grid.arrange, c(plots, ncol = 5))
+```
+
+
+```{r}
+library(mgcv)
+library(broom)  # For tidying model outputs
+
+# Create an empty list to store the models and their significance results
+model_summaries <- list()
+
+# Loop over each unique species
+for(spec in unique(resource_gam$species)) {
+  # Subset the data for the current species
+  species_data <- subset(resource_gam, species == spec)
+  
+  # Fit the GAM with random effects for Pin and On.Adjacent
+  gam_model <- gamm(Presence ~ s(dist_to_seep_m, k = 3),
+                    random = list(Pin = ~1, On.Adjacent = ~1),
+                    data = species_data, family = binomial)
+  
+  # Store the model in the list
+  models[[spec]] <- gam_model
+  
+  # Extract significance information
+  summary_gam <- summary(gam_model$gam)
+  smooth_terms <- summary_gam$s.table
+  p_values <- smooth_terms[, "p-value"]
+  significant_terms <- names(p_values[p_values < 0.05])
+  
+  # Store the significance results
+  model_summaries[[spec]] <- data.frame(
+    Species = spec,
+    Term = rownames(smooth_terms),
+    PValue = p_values
+  )
+}
+
+# Combine all summaries into one data frame
+results_df <- do.call(rbind, model_summaries)
+
+# Filter for significant terms (p-value < 0.05)
+significant_results <- results_df[results_df$PValue < 0.05, ]
+
+```
+
+```{r}
+# Create an empty list to store the models and plots
+models <- list()
+plots <- list()
+
+# Loop over each unique species
+for(spec in unique(gam_fish$species)) {
+  # Subset the data for the current species
+  species_data <- subset(gam_fish, species == spec)
+  
+  # Fit the GAM for the current species with random effects for 'Pin' and 'On_Adjacent', and limit to 3 knots
+  gam_model <- gam(Presence ~ s(dist_to_seep_m, k = 3) + s(Pin, bs = "re") + s(On.Adjacent, bs = "re"),
+                   data = species_data, family = binomial)
+  
+  # Store the model in the list
+  models[[spec]] <- gam_model
+  
+  # Check if the distance to seep fixed effect is significant
+  p_value <- summary(gam_model)$s.table["s(dist_to_seep_m)", "p-value"]
+  
+  if (p_value < 0.05) {
+    # Create a data frame for predictions
+    pred_data <- data.frame(
+      dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100)
+    )
+    
+    # Predict the presence probability
+    pred_data$Presence <- predict(gam_model, newdata = pred_data, type = "response")
+    
+    # Plot the results
+    p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
+      geom_line() +
+      labs(title = paste(spec)) +
+      theme_minimal() +
+      theme(plot.title = element_text(face = "italic"))
+    
+    # Store the plot in the list
+    plots[[spec]] <- p
+  }
+}
+
+# Arrange all plots together in a grid (only plots for significant models)
+if (length(plots) > 0) {
+  do.call(grid.arrange, c(plots, ncol = 4))
+} else {
+  print("No significant models to plot.")
+}
+```
+
+```{r}
+# Create an empty list to store the models and plots
+models <- list()
+plots <- list()
+
+# Loop over each unique species
+for(spec in unique(gam_fish$species)) {
+  # Subset the data for the current species
+  species_data <- subset(gam_fish, species == spec)
+  
+  # Fit the GAM for the current species with random effects for 'Pin' and 'On_Adjacent', and limit to 3 knots
+  gam_model <- tryCatch({
+    gam(Presence ~ s(dist_to_seep_m, k = 3) + s(meanRugosity) + s(Pin, bs = "re") + s(On.Adjacent, bs = "re"),
+                 data = species_data, family = binomial)
+  }, error = function(e) NULL)
+  
+  # Check if the model was successfully created
+  if (!is.null(gam_model)) {
+    # Store the model in the list
+    models[[spec]] <- gam_model
+    
+    # Check if the distance to seep fixed effect is significant
+    gam_summary <- summary(gam_model)
+    
+    # Ensure the summary contains the s.table
+    if ("s.table" %in% names(gam_summary)) {
+      p_value <- gam_summary$s.table["s(dist_to_seep_m)", "p-value"]
+      
+      if (p_value < 0.05) {
+        # Create a data frame for predictions, include meanRugosity
+        pred_data <- data.frame(
+          dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100),
+          meanRugosity = mean(species_data$meanRugosity),  # Use mean rugosity for prediction
+          Pin = factor(levels(species_data$Pin)[1], levels = levels(species_data$Pin)),  # Pick the first level of 'Pin'
+          On.Adjacent = factor(levels(species_data$On.Adjacent)[1], levels = levels(species_data$On.Adjacent))  # Pick the first level of 'On.Adjacent'
+        )
+        
+        # Predict the presence probability
+        pred_data$Presence <- predict(gam_model, newdata = pred_data, type = "response")
+        
+        # Plot the results
+        p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
+          geom_line() +
+          labs(title = paste(spec)) +
+          theme_minimal() +
+          theme(plot.title = element_text(face = "italic"))
+        
+        # Store the plot in the list
+        plots[[spec]] <- p
+      }
+    }
+  }
+}
+
+# To display all the plots (for species where the effect is significant)
+if (length(plots) > 0) {
+  do.call(grid.arrange, c(plots, ncol = 4))
+} else {
+  print("No significant models to plot.")
+}
+```
+
+
+```{r}
+# Specify the species you want to analyze
+single_species <- "Crenimugil crenilabrus"  # Replace with the actual species name
+
+# Subset the data for the specified species
+species_data <- subset(gam_fish, species == single_species)
+
+# Fit the GAM for the selected species with random effects for 'Pin' and 'On_Adjacent', and limit to 3 knots
+gam_model <- gam(Presence ~ s(dist_to_seep_m, k = 3) + s(meanRugosity) + s(Pin, bs = "re") + s(On.Adjacent, bs = "re"),
+                 data = species_data, family = binomial)
+
+# Check if the distance to seep fixed effect is significant
+gam_summary <- summary(gam_model)
+
+# Print the summary to see details about the model
+print(gam_summary)
+
+# Check if the smooth term for `dist_to_seep_m` is significant
+if ("s.table" %in% names(gam_summary)) {
+  p_value <- gam_summary$s.table["s(dist_to_seep_m)", "p-value"]
+  
+  if (p_value < 0.05) {
+    # Create a data frame for predictions
+    pred_data <- data.frame(
+      dist_to_seep_m = seq(min(species_data$dist_to_seep_m), max(species_data$dist_to_seep_m), length.out = 100)
+    )
+    
+    # Predict the presence probability
+    pred_data$Presence <- predict(gam_model, newdata = pred_data, type = "response")
+    
+    # Plot the results
+    p <- ggplot(data = pred_data, aes(x = dist_to_seep_m, y = Presence)) +
+      geom_line() +
+      labs(title = paste(single_species)) +
+      theme_minimal() +
+      theme(plot.title = element_text(face = "italic"))
+    
+    # Print the plot
+    print(p)
+  } else {
+    print("The effect of distance to seep is not significant.")
+  }
+} else {
+  print("Model summary does not contain s.table.")
+}
+
+```
+

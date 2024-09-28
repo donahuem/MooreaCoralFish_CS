@@ -3,13 +3,15 @@ title: "Lasso"
 author: "Callie Stephenson"
 date: "2024-07-21"
 output: html_document
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message=FALSE)
 ```
-
-#### Loading the data
+# Title
+#### Loading the packages and data
 ```{r load packages, echo=FALSE, message=FALSE}
 library(tidyverse)
 library(here)
@@ -37,6 +39,7 @@ library(glmnet)
 
 
 ```{r load data, echo=FALSE, message=FALSE}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/R")
 #explanatory data
 explanatory_all_wide <- read.csv("../data/explanatory_all_wide.csv")
 
@@ -146,7 +149,7 @@ marginal_R2_pac <- r.squaredGLMM(iso_growth_PAC)[[1]]
 conditional_R2_pac <- r.squaredGLMM(iso_growth_PAC)[[2]]
 
 iso_growth_PRU <- lmer(
-  Percent_Change ~ Δ13C +
+  Percent_Change ~ Δ15N +
     (1 | Genotype),
   data = only_C_rus %>% filter(Species == "Porites rus")
 )
@@ -173,6 +176,36 @@ ggplot(aes(x = Δ13C, y = Percent_Change), data = response_data) +
 #  geom_text(aes(label =Pin_Number)) +
 #  geom_smooth(data = subset(response_data1, Significant_Species == TRUE), method = "lm", se = TRUE) +
   facet_wrap(~Species, scales = "free_x")
+```
+```{r}
+iso_growth_PAC <- lmer(
+  Percent_Change ~ Δ15N +
+    (1 | Genotype),
+  data = only_C_rus %>% filter(Species == "Pocillopora acuta") %>% filter(!is.na(Δ15N))
+)
+
+anova_pac <- car::Anova(iso_growth_PAC)
+marginal_R2_pac <- r.squaredGLMM(iso_growth_PAC)[[1]]
+conditional_R2_pac <- r.squaredGLMM(iso_growth_PAC)[[2]]
+
+iso_growth_PRU <- lmer(
+  Percent_Change ~ Δ15N +
+    (1 | Genotype),
+  data = only_C_rus %>% filter(Species == "Porites rus") %>% filter(!is.na(Δ15N))
+)
+
+anova_pru <- car::Anova(iso_growth_PRU)
+marginal_R2_pru <- r.squaredGLMM(iso_growth_PRU)[[1]]
+conditional_R2_pru <- r.squaredGLMM(iso_growth_PRU)[[2]]
+
+iso_growth_results <- tibble(
+  Species = c("Pocillopora acuta", "Porites rus"),
+  P_Value = c(anova_pac$`Pr(>Chisq)`, anova_pru$`Pr(>Chisq)`),
+  Marginal_R2 = c(marginal_R2_pac, marginal_R2_pru),
+  Conditional_R2 = c(conditional_R2_pac, conditional_R2_pru)
+)
+
+print(iso_growth_results)
 ```
 
 ## Both
@@ -213,11 +246,11 @@ print(sym_iso_growth_results)
 
 Still no! It looks like neither is a good explainer of variation in the growth data.
 
-## What does this mean
+## What does this mean:
 
-The normal understanding of coral biology is that increases in symbiont populations or in heterotrophy should bring in more energy to the host, and therein increase growth; however, we are not seeing these relationships hold up when the coral fragments were introduced to SGD. 
+Our hypothesis was that increases in symbiont populations or in heterotrophy should bring in more energy to the host, and therein increase growth; however, we are not seeing these relationships hold up when the coral fragments were introduced to SGD. 
 
-This can also be shown through basic correlation plots of the repsonse variables. I like this version from Performance Analytics:
+This can also be shown through basic correlation plots of the response variables. I like this version from Performance Analytics:
 
 #### Here, for P. rus:
 ```{r, warning=FALSE}
@@ -323,7 +356,7 @@ PRU_model_data <- na.omit(model_data %>%
 ```
 
 
-##
+## Explanatory variables chart
 ```{r, warning=FALSE}
 chart.Correlation(na.omit(model_data[,c(8:11)]), histogram = TRUE)
 ```
@@ -393,10 +426,9 @@ PRU_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
 ```
 
 
-
 ```{r lasso PAC growth}
 PAC_model_percent_change_df <- PAC_lasso %>%
-  dplyr::select(-FSC.Events_per_cm_2, -FSC.Events_per_g_dry_weight, -GenotypePR08, -GenotypePR07, -GenotypePR06, -GenotypePR04, -GenotypePR03, -GenotypePR02, -Cage_UncagedT0)
+  dplyr::select(-FSC.Events_per_cm_2, -FSC.Events_per_g_dry_weight, -GenotypePR08, -GenotypePR07, -GenotypePR06, -GenotypePR04, -GenotypePR03, -GenotypePR02, -Cage_UncagedT0, -Low_Tide_Mean_Phosphate_umolL_scaled, -Low_Tide_Mean_Silicate_umolL_scaled, -Low_Tide_Mean_NN_umolL_scaled, -Low_Tide_Mean_NNP_umolL_scaled)
 
 PAC_model_data_matrix <- as.matrix(PAC_model_percent_change_df)
 
@@ -405,6 +437,8 @@ y_pac_percent_change <- PAC_model_data_matrix[, 1]
 lasso_PAC_growth <- cv.glmnet(x = x_pac_percent_change, y = y_pac_percent_change)
 coef(lasso_PAC_growth)
 ```
+
+
 
 ```{r elastic net from chat gpt}
 # Load necessary libraries

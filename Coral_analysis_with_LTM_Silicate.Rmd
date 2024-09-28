@@ -1,0 +1,447 @@
+---
+title: "LTM_Silicate_Results"
+author: "Callie Stephenson"
+date: "2024-09-25"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE, message=FALSE)
+```
+
+#### Loading the packages and data
+```{r load packages, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(fishualize)
+library(lme4)
+library(lmerTest) #figure out which lme package you need
+library(ggplot2)
+library(performance)
+library(see)
+library(dplyr)
+library(car)
+```
+
+```{r load data, echo=FALSE, message=FALSE}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+#explanatory data
+all_nut <- read.csv("data/All_Nutrients_Processed.csv")
+shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
+seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv") %>% 
+  filter(Location == "Varari")
+depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
+clod <- read.csv("data/Clod_Cards.csv")
+turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv")
+
+#Response data
+response_data <- read.csv("data/response_data.csv")
+response_data$Genotype <- as.factor(response_data$Genotype)
+response_data$Cage_Uncaged <- as.factor(response_data$Cage_Uncaged)
+response_data$Pin_Number <- as.factor(response_data$Pin_Number)
+
+PRU_response_data <- response_data %>% 
+  filter(Species == "Porites rus")
+
+PRU_response_data_caged <- PRU_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+PAC_response_data <- response_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+PAC_response_data_caged <- PAC_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+#metadata
+meta <- read.csv("data/coral_metadata.csv")
+
+#SI Stuff
+SI_Zoop <- read.csv("data/SI_Zoop.csv")%>% 
+  mutate(δ13C = δ13C............vs..VPDB.) %>% 
+  mutate(δ15N = δ15N...........vs..AIR.) %>% 
+  dplyr::select(-'δ13C............vs..VPDB.')%>% 
+  dplyr::select(-'δ15N...........vs..AIR.')
+```
+
+```{r}
+nut_no_seep <- all_nut[all_nut$CowTagID != 'VSEEP',]
+nut_no_seep <- left_join(nut_no_seep, seep_dist[,c("CowTagID", "lat", "lon", "dist_to_seep_m")], by = join_by(CowTagID))
+nut_no_seep <- left_join(nut_no_seep, shore_dist[,c("CowTagID", "shore_dist_m")], by = join_by(CowTagID))
+```
+
+```{r model data}
+model_data <- left_join(response_data, nut_no_seep, by = join_by(CowTagID))
+```
+
+
+```{r}
+ggplot(nut_no_seep, aes(x = lon, y = lat, color = Low_Tide_Mean_Silicate_umolL)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "Low_Tide_Mean_Silicate_umolL") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  geom_point(data = (seep_dist %>% filter(CowTagID == "VSEEP")), aes(x = lon, y = lat), shape = 21, size = 4, color = "#F1E700") +
+  theme_minimal()
+```
+
+## Growth
+
+```{r}
+PAC_model_data <- model_data %>%
+  filter(Species == "Pocillopora acuta", !is.na(Pin_Number))
+
+PRU_model_data <- left_join(PRU_response_data, nut_no_seep, by = join_by(CowTagID)) %>% 
+  filter(!is.na(FSC.Events_per_cm_2))
+
+PRU_model_data_caged_only <- left_join(PRU_response_data_caged, nut_no_seep, by = join_by(CowTagID)) %>% 
+  filter(!is.na(FSC.Events_per_cm_2))
+```
+
+
+### Pocillopora acuta
+
+```{r}
+ggplot(PAC_model_data, aes(x = Low_Tide_Mean_Silicate_umolL, y = FSC.Events_per_cm_2, color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "Low tide mean silicate - high numbers = high SGD", y = "Percent Change in Buoyant Weight", title = "Pocillopora acuta change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+#### linear model:
+
+```{r}
+linear_growth_model_pac <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(linear_growth_model_pac)
+#summary(linear_growth_model_pac)
+Anova(linear_growth_model_pac)
+```
+
+This model does not support the hypothesis SGD contributes to the variance in calcification in Pocillopora acuta
+
+#### polynomial model: 
+
+```{r}
+polynomial_growth_model_pac <- lmer(FSC.Events_per_cm_2 ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(polynomial_growth_model_pac)
+Anova(polynomial_growth_model_pac)
+```
+
+This model does not support the hypothesis SGD contributes to the variance in calcification in Pocillopora acuta
+
+### Porites rus
+
+```{r}
+ggplot(PRU_model_data, aes(x = Low_Tide_Mean_Silicate_umolL, y = FSC.Events_per_cm_2, color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Percent Change in Buoyant Weight", title = "Porites rus change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+```{r}
+linear_growth_model_pru <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(linear_growth_model_pru)
+Anova(linear_growth_model_pru)
+```
+
+We do not find support for Low_Tide_Mean_Silicate_umolL affecting growth of Porites rus in a linear fashion
+
+```{r}
+polynomial_growth_model_pru <- lmer(FSC.Events_per_cm_2 ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(polynomial_growth_model_pru)
+Anova(polynomial_growth_model_pru)
+```
+
+We do not find support for Low_Tide_Mean_Silicate_umolL affecting growth of Porites rus in a polynomial fashion
+
+#### PRU but only caged
+
+I also ran these models on a dataset with only caged corals:
+
+```{r}
+linear_growth_model_pru_c <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pru_c)
+```
+
+```{r}
+polynomial_growth_model_pru_c <- lmer(FSC.Events_per_cm_2 ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(polynomial_growth_model_pru_c)
+Anova(polynomial_growth_model_pru_c)
+```
+
+These model does not support the hypothesis that nutriencts from SGD contribute to the variance in calcification in Pocillopora acuta
+
+When only looking at caged samples, we still don't find any influence of Low_Tide_Mean_Silicate_umolL on calcification
+
+## Symbiont Count
+
+### Pocillopora acuta
+
+```{r}
+ggplot(PAC_model_data, aes(x = Low_Tide_Mean_Silicate_umolL, y = FSC.Events_per_cm_2, color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Percent Change in Buoyant Weight", title = "Pocillopora acuta change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+#### linear model
+```{r}
+linear_symb_model_pac <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(linear_symb_model_pac)
+Anova(linear_symb_model_pac)
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in symbiont density in Pocillopora acuta
+
+#### polynomial model
+
+```{r}
+polynomial_symb_model_pac <- lmer(FSC.Events_per_cm_2 ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(polynomial_symb_model_pac)
+Anova(polynomial_symb_model_pac)
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in symbiont density in Pocillopora acuta
+
+### Porites rus
+```{r}
+ggplot(PRU_model_data, aes(x = Low_Tide_Mean_Silicate_umolL, y = FSC.Events_per_cm_2, color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Symbiont Density in Buoyant Weight", title = "Porites rus change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+#### linear model:
+
+```{r}
+linear_symb_model_pru <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(linear_symb_model_pru)
+Anova(linear_symb_model_pru)
+```
+
+We do not find support for Low_Tide_Mean_Silicate_umolL affecting symb of Porites rus in a linear fashion
+
+#### polynomial model:
+
+```{r}
+polynomial_symb_model_pru <- lmer(FSC.Events_per_cm_2 ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(polynomial_symb_model_pru)
+Anova(polynomial_symb_model_pru)
+```
+
+We do not find support for Low_Tide_Mean_Silicate_umolL affecting symb of Porites rus in a polynomial fashion
+
+#### PRU but only caged
+
+```{r}
+linear_symb_model_pru_c <- lmer(FSC.Events_per_cm_2 ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(linear_symb_model_pru_c)
+Anova(linear_symb_model_pru_c)
+```
+
+
+```{r}
+polynomial_symb_model_pru_c <- lmer(FSC.Events_per_cm_2 ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(polynomial_symb_model_pru_c)
+Anova(polynomial_symb_model_pru_c)
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in symbiont density in Porites rus
+
+## Heterotrophy
+
+```{r}
+SI_Zoop$Species <- SI_Zoop$POM_Zoop
+SI_Zoop <- SI_Zoop %>%
+  mutate(Low_Tide_Mean_Silicate_umolL = ifelse(Seep_Out == "Seep", max(nut_no_seep$Low_Tide_Mean_Silicate_umolL), 
+                             ifelse(Seep_Out == "Out", min(nut_no_seep$Low_Tide_Mean_Silicate_umolL), NA)))
+
+SI_symb <- model_data[,c("Pin_Number", "Species", "lat", "lon", "δ13C_symb", "δ15N_symb", "Low_Tide_Mean_Silicate_umolL")] %>% 
+  filter(!is.na(δ13C_symb)) %>% 
+  filter(!is.na(Low_Tide_Mean_Silicate_umolL)) %>% 
+  mutate(δ13C = δ13C_symb) %>% 
+  mutate(δ15N = δ15N_symb) %>% 
+  mutate(Species = ifelse(Species == "Pocillopora acuta", "Pocillopora acuta symbionts",
+         ifelse(Species == "Porites rus", "Porites rus symbionts", NA))) %>% 
+  filter(!is.na(δ13C))
+
+SI_coral <- model_data[,c("Pin_Number", "Species", "lat", "lon", "δ13C_host", "δ15N_host", "Low_Tide_Mean_Silicate_umolL")] %>% 
+  filter(!is.na(δ13C_host)) %>% 
+  filter(!is.na(Low_Tide_Mean_Silicate_umolL)) %>% 
+  mutate(δ13C = δ13C_host) %>% 
+  mutate(δ15N = δ15N_host) %>% 
+  filter(!is.na(δ15N))
+```
+
+to see how the coral host vs symb nitrogen looks against the potential sources (zooplankton and pom)
+```{r}
+ggplot() +
+  geom_jitter(data = SI_coral, aes(x = Species, y = δ13C, color = Low_Tide_Mean_Silicate_umolL), shape = 17) +
+  geom_jitter(data = SI_symb, aes(x = Species, y = δ13C, color = Low_Tide_Mean_Silicate_umolL), shape = 16) +
+  geom_jitter(data = SI_Zoop, aes(x = Species, y = δ13C, , color = Low_Tide_Mean_Silicate_umolL), shape = 15) +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1, name = "Silicate gradient")
+```
+
+to see how the coral host vs symb nitrogen looks against the potential sources (zooplankton and pom)
+```{r}
+ggplot() +
+  geom_jitter(data = SI_coral, aes(x = Species, y = δ15N, color = Low_Tide_Mean_Silicate_umolL), shape = 17) +
+  geom_jitter(data = SI_symb, aes(x = Species, y = δ15N, color = Low_Tide_Mean_Silicate_umolL), shape = 16) +
+  geom_jitter(data = SI_Zoop, aes(x = Species, y = δ15N, color = Low_Tide_Mean_Silicate_umolL), shape = 15) +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1, name = "PCA of SGD nutrients")
+```
+
+## Carbon
+
+### Pocillopora acuta
+
+#### Exploratory plot:
+```{r}
+SI_PAC_model_data <- PAC_model_data %>% 
+  filter(!is.na(Δ13C))
+ggplot(data = SI_PAC_model_data, (aes(y=Δ13C, x= Low_Tide_Mean_Silicate_umolL))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_carbon_model_pac <- lmer(Δ13C ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(linear_carbon_model_pac)
+#summary(linear_carbon_model_pac)
+Anova(linear_carbon_model_pac)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_carbon_model_pac <- lmer(Δ13C ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(polynomial_carbon_model_pac)
+Anova(polynomial_carbon_model_pac)
+```
+
+WE FOUND SOMETHING SIGNIFICANT!!!!
+
+```{r}
+SI_PAC_model_data <- SI_PAC_model_data %>%
+  mutate(predicted_Δ13C = predict(polynomial_carbon_model_pac))
+
+# Create the plot with the fitted line
+ggplot(data = SI_PAC_model_data, aes(x = Low_Tide_Mean_Silicate_umolL, y = Δ13C)) +
+  geom_point() +
+  geom_line(aes(y = predicted_Δ13C), color = "blue") +  # Add the fitted line
+  labs(title = "Pocillopora acuta Δ13C (host minus symbiont, proxy for heterotrophy)",
+       x = "Low_Tide_Mean_Silicate_umolL",
+       y = "Δ13C") +
+  theme_minimal()
+```
+
+### Porites rus
+#### Exploratory plot:
+```{r}
+SI_PRU_model_data <- PRU_model_data %>% 
+  filter(!is.na(Δ13C))
+ggplot(data = SI_PRU_model_data, (aes(y=Δ13C, x= Low_Tide_Mean_Silicate_umolL))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_carbon_model_PRU <- lmer(Δ13C ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(linear_carbon_model_PRU)
+#summary(linear_carbon_model_PRU)
+Anova(linear_carbon_model_PRU)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_carbon_model_PRU <- lmer(Δ13C ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(polynomial_carbon_model_PRU)
+Anova(polynomial_carbon_model_PRU)
+```
+Not significant
+
+## Nitrogen
+
+### Pocillopora acuta
+
+#### Exploratory plot:
+```{r}
+SI_PAC_model_data <- PAC_model_data %>% 
+  filter(!is.na(Δ15N))
+ggplot(data = SI_PAC_model_data, (aes(y=Δ15N, x= Low_Tide_Mean_Silicate_umolL))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_nitrogen_model_pac <- lmer(Δ15N ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(linear_nitrogen_model_pac)
+#summary(linear_nitrogen_model_pac)
+Anova(linear_nitrogen_model_pac)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_nitrogen_model_pac <- lmer(Δ15N ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(polynomial_nitrogen_model_pac)
+Anova(polynomial_nitrogen_model_pac)
+```
+Not significant
+
+### Porites rus
+#### Exploratory plot:
+```{r}
+SI_PRU_model_data <- PRU_model_data %>% 
+  filter(!is.na(Δ15N))
+ggplot(data = SI_PRU_model_data, (aes(y=Δ15N, x= Low_Tide_Mean_Silicate_umolL))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_nitrogen_model_PRU <- lmer(Δ15N ~ Low_Tide_Mean_Silicate_umolL +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(linear_nitrogen_model_PRU)
+#summary(linear_nitrogen_model_PRU)
+Anova(linear_nitrogen_model_PRU)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_nitrogen_model_PRU <- lmer(Δ15N ~ poly(Low_Tide_Mean_Silicate_umolL, 2) +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(polynomial_nitrogen_model_PRU)
+Anova(polynomial_nitrogen_model_PRU)
+```
+
+Not significant
+
+

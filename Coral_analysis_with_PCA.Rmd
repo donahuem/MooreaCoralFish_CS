@@ -1,0 +1,967 @@
+---
+title: "PCA_Results"
+author: "Callie Stephenson"
+date: "2024-09-25"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Question 1
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE, message=FALSE)
+```
+
+## Loading the packages and data
+```{r load packages, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(here)
+library(fishualize)
+library(lme4)
+library(lmerTest) #figure out which lme package you need
+library(ggplot2)
+library(performance)
+library(see)
+library(dplyr)
+library(car)
+library(PerformanceAnalytics)
+library(glmnet)
+library(effects)
+```
+
+```{r load data, echo=FALSE, message=FALSE}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+#explanatory data
+all_nut <- read.csv("data/All_Nutrients_Processed.csv")
+shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
+seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv") %>% 
+  filter(Location == "Varari")
+depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
+clod <- read.csv("data/Clod_Cards.csv")
+turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv")
+
+#Response data
+response_data <- read.csv("data/response_data.csv")
+response_data$Genotype <- as.factor(response_data$Genotype)
+response_data$Cage_Uncaged <- as.factor(response_data$Cage_Uncaged)
+response_data$Pin_Number <- as.factor(response_data$Pin_Number)
+
+PRU_response_data <- response_data %>% 
+  filter(Species == "Porites rus")
+
+PRU_response_data_caged <- PRU_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+PAC_response_data <- response_data %>% 
+  filter(Species == "Pocillopora acuta")
+
+PAC_response_data_caged <- PAC_response_data %>% 
+  filter(Cage_Uncaged == "C")
+
+#metadata
+meta <- read.csv("data/coral_metadata.csv")
+
+#SI Stuff
+SI_Zoop <- read.csv("data/SI_Zoop.csv")%>% 
+  mutate(δ13C = δ13C............vs..VPDB.) %>% 
+  mutate(δ15N = δ15N...........vs..AIR.) %>% 
+  dplyr::select(-'δ13C............vs..VPDB.')%>% 
+  dplyr::select(-'δ15N...........vs..AIR.')
+```
+
+```{r}
+nut_no_seep <- all_nut[all_nut$CowTagID != 'VSEEP',]
+nut_no_seep <- left_join(nut_no_seep, seep_dist[,c("CowTagID", "lat", "lon", "dist_to_seep_m")], by = join_by(CowTagID))
+nut_no_seep <- left_join(nut_no_seep, shore_dist[,c("CowTagID", "shore_dist_m")], by = join_by(CowTagID))
+```
+
+```{r model data}
+model_data <- left_join(response_data, nut_no_seep, by = join_by(CowTagID))
+```
+
+## Building a PCA
+```{r}
+pulse_columns <- names(all_nut)[grepl("Low_Tide_Mean_", names(all_nut)) & 
+                                  !grepl("Temperature|pH|Ammonia_umol|TA",names(all_nut))]
+nut_no_seep_scaled <- nut_no_seep %>%
+  mutate(across(all_of(pulse_columns), scale))
+
+pca.data <- na.omit(nut_no_seep_scaled[, c(pulse_columns)])
+pca = princomp(pca.data, cor=TRUE)
+```
+
+When I make a PCA of 
+```{r}
+names(pca.data)
+```
+
+we can explain 72.2% of the variation of these factors with 1 axis. 
+```{r}
+summary(pca)
+loadings(pca)
+```
+
+```{r}
+biplot(pca)
+```
+
+
+### PCA of sd - doesn't work
+```{r}
+sd_columns <- names(all_nut)[grepl("sd_", names(all_nut)) & 
+                                  !grepl("Phosphate_umolL|NN_umolL|Ammonia_umolL|NNP_umolL|Silicate_umolL",names(all_nut))]
+sd.pca.data <- na.omit(nut_no_seep[, c(sd_columns)])
+sd.pca = princomp(sd.pca.data, cor=TRUE)
+names(sd.pca.data)
+```
+
+```{r}
+summary(sd.pca)
+loadings(sd.pca)
+biplot(sd.pca)
+```
+
+As we can see from the biplot, on Comp 1, which is 72.2% of the variation, lower values on Comp 1 represent higher nutrient concentrations and a lower salinity value. This suggests that low values on Comp 1 represent pins that have high SGD values, and high numbers on Comp 1 represent low SGD values. I'm going to flop this so that 'high' numbers on comp1 mean 'high' nutrient environment.
+
+Though Comp 2 helps capture another 20% of the variation, it doesn't appear to very interpretable to me. Silicate and Phosphate are higher with higher values, which are 'conserved', and therefore experiencing less 'drawdown'. Potentially this Comp 2 is higher values are retaining SGD after biological draw-down? This doesn't really play into my overall hypotheses, so I am sticking with Comp 1 here.
+
+Here, the hollow yellow dot is the seep, and cooler colors have less nutrient influence, while more yellow colors have more nutrients at low tide. 
+
+```{r}
+nut_no_seep_scaled$pc1 = -1*(pca$scores[,1]) #what's this data's score on pc1 axis
+nut_no_seep_scaled$pc2 = -1*(pca$scores[,2]) #what's this data's score on pc1 axis
+
+ggplot(nut_no_seep_scaled, aes(x = lon, y = lat, color = pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1 of pulse") +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1) +
+  geom_point(data = (seep_dist %>% filter(CowTagID == "VSEEP")), aes(x = lon, y = lat), shape = 21, size = 4, color = "#F1E700") +
+  theme_minimal()
+```
+
+```{r}
+nut_no_seep_scaled$sd_pc1 = sd.pca$scores[,1] #what's this data's score on pc1 axis
+nut_no_seep_scaled$sd_pc2 = sd.pca$scores[,2] #what's this data's score on pc2 axis
+ggplot(nut_no_seep_scaled, aes(x = lon, y = lat, color = sd_pc1)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC1 of SD (high numbers high sgd)") +
+  scale_color_fish(option = "Antennarius_multiocellatus", direction = -1) +
+  geom_point(data = (seep_dist %>% filter(CowTagID == "VSEEP")), aes(x = lon, y = lat), shape = 21, size = 4, color = "#F1E700") +
+  theme_minimal()
+
+ggplot(nut_no_seep_scaled, aes(x = lon, y = lat, color = sd_pc2)) +
+  geom_point() +
+  labs(x = "Latitude", y = "Longitude", color = "PC2 of SD (high numbers high sgd)") +
+  scale_color_fish(option = "Antennarius_multiocellatus", direction = -1) +
+  geom_point(data = (seep_dist %>% filter(CowTagID == "VSEEP")), aes(x = lon, y = lat), shape = 21, size = 4, color = "#F1E700") +
+  theme_minimal()
+```
+
+
+```{r add pc to model data}
+model_data <- left_join(model_data, nut_no_seep_scaled[,c("CowTagID", "pc1", "sd_pc1", "sd_pc2")], by = join_by(CowTagID))
+```
+
+## Growth
+
+```{r}
+PAC_model_data <- model_data %>%
+  filter(Species == "Pocillopora acuta", !is.na(Pin_Number))
+
+PRU_model_data <- left_join(PRU_response_data, nut_no_seep_scaled, by = join_by(CowTagID)) %>% 
+  filter(!is.na(Percent_Change))
+
+PRU_model_data_caged_only <- left_join(PRU_response_data_caged, nut_no_seep_scaled, by = join_by(CowTagID)) %>% 
+  filter(!is.na(Percent_Change))
+```
+
+
+### Pocillopora acuta
+
+```{r}
+ggplot(PAC_model_data, aes(x = pc1, y = Percent_Change, color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Percent Change in Buoyant Weight", title = "Pocillopora acuta change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+#### linear model:
+
+```{r pulse linear growth}
+linear_growth_model_pac <- lmer(Percent_Change ~ pc1 +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(linear_growth_model_pac)
+#summary(linear_growth_model_pac)
+Anova(linear_growth_model_pac)
+```
+
+```{r sd linear growth}
+# linear_growth_model_pac <- lmer(Percent_Change ~ sd_pc1 + sd_pc2 +
+#                                   (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+# #check_model(linear_growth_model_pac)
+# #summary(linear_growth_model_pac)
+# car::Anova(linear_growth_model_pac)
+```
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in calcification in Pocillopora acuta
+
+#### polynomial model: 
+
+```{r}
+polynomial_growth_model_pac <- lmer(log10(Percent_Change) ~ poly(pc1, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(polynomial_growth_model_pac)
+Anova(polynomial_growth_model_pac)
+```
+
+
+```{r}
+prediction_data <- data.frame(pc1 = seq(min(PAC_model_data$pc1), 
+                                   max(PAC_model_data$pc1), 
+                                   length.out = 100))
+# Add predicted values to the dataframe using the model without random effects
+predictions <- predict(polynomial_growth_model_pac, newdata = prediction_data, re.form = NA, se.fit = TRUE)
+
+#Add to new_data
+prediction_data <- prediction_data %>%
+  mutate(fit = predictions$fit,
+         se.fit = predictions$se.fit,
+         lower = fit - 1.96 * se.fit,  # 95% CI lower
+         upper = fit + 1.96 * se.fit)   # 95% CI upper
+
+# Create the plot with the fitted line
+ggplot() +
+  geom_point(data = PAC_model_data, aes(x = pc1, y = Percent_Change)) +
+  geom_line(data = prediction_data, aes(x = pc1, y = fit), color = "blue") +  # Add the fitted line
+  geom_ribbon(data = prediction_data, aes(x = pc1, ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +  # Add CI
+  labs(title = "Pocillopora acuta Δ13C (host minus symbiont, proxy for heterotrophy)",
+       x = "PC1",
+       y = "Δ13C") +
+  theme_minimal()
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in calcification in Pocillopora acuta
+
+### Porites rus
+
+```{r}
+ggplot(PRU_model_data, aes(x = pc1, y = Percent_Change, color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Percent Change in Buoyant Weight", title = "Porites rus change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+```{r}
+linear_growth_model_pru <- lmer(Percent_Change ~ pc1 +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(linear_growth_model_pru)
+Anova(linear_growth_model_pru)
+```
+
+We do not find support for pc1 affecting growth of Porites rus in a linear fashion
+
+```{r}
+polynomial_growth_model_pru <- lmer(Percent_Change ~ poly(pc1, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(polynomial_growth_model_pru)
+Anova(polynomial_growth_model_pru)
+```
+
+We do not find support for pc1 affecting growth of Porites rus in a polynomial fashion
+
+#### PRU but only caged
+
+I also ran these models on a dataset with only caged corals:
+
+```{r}
+linear_growth_model_pru_c <- lmer(Percent_Change ~ pc1 +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pru_c)
+```
+
+```{r}
+polynomial_growth_model_pru_c <- lmer(Percent_Change ~ poly(pc1, 2) +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(polynomial_growth_model_pru_c)
+Anova(polynomial_growth_model_pru_c)
+```
+
+These model does not support the hypothesis that nutriencts from SGD contribute to the variance in calcification in Pocillopora acuta
+
+When only looking at caged samples, we still don't find any influence of PC1 on calcification
+
+## Symbiont Count
+
+### Pocillopora acuta
+
+```{r}
+ggplot(PAC_model_data, aes(x = pc1, y = log10(FSC.Events_per_cm_2), color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Log10 transformed Symbiont Abundance", title = "Pocillopora acuta change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+#### linear model
+```{r}
+linear_symb_model_pac <- lmer(log10(FSC.Events_per_cm_2) ~ pc1 +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(linear_symb_model_pac)
+Anova(linear_symb_model_pac)
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in symbiont density in Pocillopora acuta
+
+#### polynomial model
+
+```{r}
+polynomial_symb_model_pac <- lmer(log10(FSC.Events_per_cm_2) ~ poly(pc1, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
+#check_model(polynomial_symb_model_pac)
+Anova(polynomial_symb_model_pac)
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in symbiont density in Pocillopora acuta
+
+### Porites rus
+```{r}
+ggplot(PRU_model_data, aes(x = pc1, y = log10(FSC.Events_per_cm_2), color = Genotype, shape = Cage_Uncaged)) +
+  geom_point() +
+  labs(x = "PCA - low numbers reflect high SGD influence", y = "Log10 transformed Symbiont Abundance", title = "Porites rus change in buoyant weight by SGD exposure") +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1) +
+  theme_minimal()
+```
+
+#### linear model:
+
+```{r}
+linear_symb_model_pru <- lmer(log10(FSC.Events_per_cm_2) ~ pc1 +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(linear_symb_model_pru)
+Anova(linear_symb_model_pru)
+```
+
+We do not find support for pc1 affecting symb of Porites rus in a linear fashion
+
+#### polynomial model:
+
+```{r}
+polynomial_symb_model_pru <- lmer(log10(FSC.Events_per_cm_2) ~ poly(pc1, 2) +
+                                  (1|Genotype) + (1|Cage_Uncaged), data = PRU_model_data)
+#check_model(polynomial_symb_model_pru)
+Anova(polynomial_symb_model_pru)
+```
+
+We do not find support for pc1 affecting symb of Porites rus in a polynomial fashion
+
+#### PRU but only caged
+
+```{r}
+linear_symb_model_pru_c <- lmer(log10(FSC.Events_per_cm_2) ~ pc1 +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(linear_symb_model_pru_c)
+Anova(linear_symb_model_pru_c)
+```
+
+
+```{r}
+polynomial_symb_model_pru_c <- lmer(log10(FSC.Events_per_cm_2) ~ poly(pc1, 2) +
+                                  (1|Genotype), data = PRU_model_data_caged_only)
+#check_model(polynomial_symb_model_pru_c)
+Anova(polynomial_symb_model_pru_c)
+```
+
+This model does not support the hypothesis that nutriencts from SGD contribute to the variance in symbiont density in Porites rus
+
+## Heterotrophy
+
+### Exploratory plots
+```{r}
+SI_Zoop$Species <- SI_Zoop$POM_Zoop
+
+SI_symb <- model_data[,c("Pin_Number", "Species", "lat", "lon", "δ13C_symb", "δ15N_symb", "pc1")] %>% 
+  filter(!is.na(δ13C_symb)) %>% 
+  filter(!is.na(pc1)) %>% 
+  mutate(δ13C = δ13C_symb) %>% 
+  mutate(δ15N = δ15N_symb) %>% 
+  mutate(Species = ifelse(Species == "Pocillopora acuta", "Pocillopora acuta symbionts",
+         ifelse(Species == "Porites rus", "Porites rus symbionts", NA))) %>% 
+  filter(!is.na(δ13C))
+
+SI_coral <- model_data[,c("Pin_Number", "Species", "lat", "lon", "δ13C_host", "δ15N_host", "pc1")] %>% 
+  filter(!is.na(δ13C_host)) %>% 
+  filter(!is.na(pc1)) %>% 
+  mutate(δ13C = δ13C_host) %>% 
+  mutate(δ15N = δ15N_host) %>% 
+  filter(!is.na(δ15N))
+```
+
+to see how the coral host vs symb nitrogen looks against the potential sources (zooplankton and pom)
+```{r}
+SI_Zoop <- SI_Zoop %>%
+  mutate(pc1 = ifelse(Seep_Out == "Out", (max(nut_no_seep_scaled$pc1)+0.5), 
+                             ifelse(Seep_Out == "Seep", (min(nut_no_seep_scaled$pc1)-0.5), NA))) %>% 
+  mutate(Species = POM_Zoop)
+
+ggplot() +
+  geom_jitter(data = SI_coral, aes(x = Species, y = δ13C, color = pc1), shape = 17) +
+  geom_jitter(data = SI_symb, aes(x = Species, y = δ13C, color = pc1), shape = 16) +
+  geom_jitter(data = SI_Zoop, aes(x = Species, y = δ13C, , color = pc1), shape = 15) +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1, name = "PCA of SGD nutrients")
+```
+
+Instead of coloring by the pc axis, this is using the pc as the x-axis with 13C as the response and colored/shaped by species:
+
+```{r}
+ggplot() +
+  geom_point(data = SI_coral, aes(x = pc1, y = δ13C, color = Species), shape = 17) +
+  geom_point(data = SI_symb, aes(x = pc1, y = δ13C, color = Species), shape = 16) +
+  geom_point(data = SI_Zoop, aes(x = pc1, y = δ13C, , color = Species), shape = 15) +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1, name = "Source")
+```
+
+to see how the coral host vs symb nitrogen looks against the potential sources (zooplankton and pom)
+```{r}
+ggplot() +
+  geom_jitter(data = SI_coral, aes(x = Species, y = δ15N, color = pc1), shape = 17) +
+  geom_jitter(data = SI_symb, aes(x = Species, y = δ15N, color = pc1), shape = 16) +
+  geom_jitter(data = SI_Zoop, aes(x = Species, y = δ15N, color = pc1), shape = 15) +
+  scale_color_fish(option = "Coryphaena_hippurus", direction = -1, name = "PCA of SGD nutrients")
+```
+
+Instead of coloring by the pc axis, this is using the pc as the x-axis with 13C as the response and colored/shaped by species:
+```{r}
+ggplot() +
+  geom_point(data = SI_coral, aes(x = pc1, y = δ15N, color = Species), shape = 17) +
+  geom_point(data = SI_symb, aes(x = pc1, y = δ15N, color = Species), shape = 16) +
+  geom_point(data = SI_Zoop, aes(x = pc1, y = δ15N, , color = Species), shape = 15) +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1, name = "Source")
+```
+
+```{r}
+ggplot() +
+  geom_point(data = SI_coral, aes(x = δ13C, y = δ15N, color = Species), shape = 17) +
+  geom_point(data = SI_symb, aes(x = δ13C, y = δ15N, color = Species), shape = 16) +
+  geom_point(data = SI_Zoop, aes(x = δ13C, y = δ15N, , color = Species), shape = 15) +
+  scale_color_fish_d(option = "Coryphaena_hippurus", direction = -1, name = "Source")
+```
+
+## Carbon
+
+### Pocillopora acuta
+
+#### Exploratory plot:
+```{r}
+SI_PAC_model_data <- PAC_model_data %>% 
+  filter(!is.na(Δ13C))
+ggplot(data = SI_PAC_model_data, (aes(y=Δ13C, x= pc1))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_carbon_model_pac <- lmer(Δ13C ~ pc1 +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(linear_carbon_model_pac)
+#summary(linear_carbon_model_pac)
+Anova(linear_carbon_model_pac)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_carbon_model_pac <- lmer(Δ13C ~ poly(pc1, 2) +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(polynomial_carbon_model_pac)
+Anova(polynomial_carbon_model_pac)
+```
+
+WE FOUND SOMETHING SIGNIFICANT!!!!
+```{r}
+prediction_data <- data.frame(pc1 = seq(min(SI_PAC_model_data$pc1), 
+                                   max(SI_PAC_model_data$pc1), 
+                                   length.out = 100))
+# Add predicted values to the dataframe using the model without random effects
+predictions <- predict(polynomial_carbon_model_pac, newdata = prediction_data, re.form = NA, se.fit = TRUE)
+
+#Add to new_data
+prediction_data <- prediction_data %>%
+  mutate(fit = predictions$fit,
+         se.fit = predictions$se.fit,
+         lower = fit - 1.96 * se.fit,  # 95% CI lower
+         upper = fit + 1.96 * se.fit)   # 95% CI upper
+
+# Create the plot with the fitted line
+ggplot() +
+  geom_point(data = SI_PAC_model_data, aes(x = pc1, y = Δ13C)) +
+  geom_line(data = prediction_data, aes(x = pc1, y = fit), color = "blue") +  # Add the fitted line
+  geom_ribbon(data = prediction_data, aes(x = pc1, ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +  # Add CI
+  labs(title = "Pocillopora acuta Δ13C (host minus symbiont, proxy for heterotrophy)",
+       x = "PC1",
+       y = "Δ13C") +
+  theme_minimal()
+```
+
+
+```{r}
+SI_PAC_model_data <- SI_PAC_model_data %>%
+  mutate(predicted_Δ13C = predict(polynomial_carbon_model_pac))
+
+# Create the plot with the fitted line
+ggplot(data = SI_PAC_model_data, aes(x = pc1, y = Δ13C)) +
+  geom_point() +
+  geom_line(aes(y = predicted_Δ13C), color = "blue") +  # Add the fitted line
+  labs(title = "Pocillopora acuta Δ13C (host minus symbiont, proxy for heterotrophy)",
+       x = "PC1",
+       y = "Δ13C") +
+  theme_minimal()
+```
+
+### Porites rus
+#### Exploratory plot:
+```{r}
+SI_PRU_model_data <- PRU_model_data %>% 
+  filter(!is.na(Δ13C))
+ggplot(data = SI_PRU_model_data, (aes(y=Δ13C, x= pc1))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_carbon_model_PRU <- lmer(Δ13C ~ pc1 +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(linear_carbon_model_PRU)
+#summary(linear_carbon_model_PRU)
+Anova(linear_carbon_model_PRU)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_carbon_model_PRU <- lmer(Δ13C ~ poly(pc1, 2) +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(polynomial_carbon_model_PRU)
+Anova(polynomial_carbon_model_PRU)
+```
+Not significant
+
+## Nitrogen
+
+### Pocillopora acuta
+
+#### Exploratory plot:
+```{r}
+SI_PAC_model_data <- PAC_model_data %>% 
+  filter(!is.na(Δ15N))
+ggplot(data = SI_PAC_model_data, (aes(y=Δ15N, x= pc1))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_nitrogen_model_pac <- lmer(Δ15N ~ pc1 +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(linear_nitrogen_model_pac)
+#summary(linear_nitrogen_model_pac)
+Anova(linear_nitrogen_model_pac)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_nitrogen_model_pac <- lmer(Δ15N ~ poly(pc1, 2) +
+                                  (1|Genotype), data = SI_PAC_model_data)
+#check_model(polynomial_nitrogen_model_pac)
+Anova(polynomial_nitrogen_model_pac)
+```
+Not significant
+
+### Porites rus
+#### Exploratory plot:
+```{r}
+SI_PRU_model_data <- PRU_model_data %>% 
+  filter(!is.na(Δ15N))
+ggplot(data = SI_PRU_model_data, (aes(y=Δ15N, x= pc1))) +
+         geom_point()
+```
+
+#### Linear model:
+```{r}
+linear_nitrogen_model_PRU <- lmer(Δ15N ~ pc1 +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(linear_nitrogen_model_PRU)
+#summary(linear_nitrogen_model_PRU)
+Anova(linear_nitrogen_model_PRU)
+```
+Not significant
+
+#### Polynomial model:
+```{r}
+polynomial_nitrogen_model_PRU <- lmer(Δ15N ~ poly(pc1, 2) +
+                                  (1|Genotype), data = SI_PRU_model_data)
+#check_model(polynomial_nitrogen_model_PRU)
+Anova(polynomial_nitrogen_model_PRU)
+```
+
+Significant
+
+```{r}
+prediction_data <- data.frame(pc1 = seq(min(SI_PRU_model_data$pc1), 
+                                   max(SI_PRU_model_data$pc1), 
+                                   length.out = 100))
+# Add predicted values to the dataframe using the model without random effects
+predictions <- predict(polynomial_nitrogen_model_PRU, newdata = prediction_data, re.form = NA, se.fit = TRUE)
+
+#Add to new_data
+prediction_data <- prediction_data %>%
+  mutate(fit = predictions$fit,
+         se.fit = predictions$se.fit,
+         lower = fit - 1.96 * se.fit,  # 95% CI lower
+         upper = fit + 1.96 * se.fit)   # 95% CI upper
+
+# Create the plot with the fitted line
+ggplot() +
+  geom_point(data = SI_PRU_model_data, aes(x = pc1, y = Δ15N)) +
+  geom_line(data = prediction_data, aes(x = pc1, y = fit), color = "blue") +  # Add the fitted line
+  geom_ribbon(data = prediction_data, aes(x = pc1, ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +  # Add CI
+  labs(title = "Porites rus Δ15N (host minus symbiont, proxy for heterotrophy)",
+       x = "PC1",
+       y = "Δ15N") +
+  theme_minimal()
+```
+
+```{r}
+prediction_data <- data.frame(pc1 = seq(min(SI_PRU_model_data$pc1), 
+                                   max(SI_PRU_model_data$pc1), 
+                                   length.out = 100))
+# Add predicted values to the dataframe using the model without random effects
+predictions <- predict(polynomial_nitrogen_model_PRU, newdata = prediction_data, re.form = NA, se.fit = TRUE)
+
+#Add to new_data
+prediction_data <- prediction_data %>%
+  mutate(fit = predictions$fit,
+         se.fit = predictions$se.fit,
+         lower = fit - 1.96 * se.fit,  # 95% CI lower
+         upper = fit + 1.96 * se.fit)   # 95% CI upper
+
+# Create the plot with the fitted line
+ggplot() +
+  geom_point(data = SI_PAC_model_data, aes(x = pc1, y = Δ13C)) +
+  geom_line(data = prediction_data, aes(x = pc1, y = fit), color = "blue") +  # Add the fitted line
+  geom_ribbon(data = prediction_data, aes(x = pc1, ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +  # Add CI
+  labs(title = "Pocillopora acuta Δ13C (host minus symbiont, proxy for heterotrophy)",
+       x = "PC1",
+       y = "Δ13C") +
+  theme_minimal()
+```
+
+
+# Question 2
+
+## Collinearity
+```{r}
+chart.Correlation(na.omit(model_data[,c("sd_Salinity","sd_Temperature", "sd_TA", "sd_pH")]))
+```
+
+
+## Growth
+
+### PAC
+```{r PAC lasso}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Percent_Change","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+PAC_lasso$Cage_Uncaged <- as.factor(PAC_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_percent_change <- PAC_model_data_matrix[, -1]
+y_pac_percent_change <- PAC_model_data_matrix[, 1]
+lasso_PAC_growth <- cv.glmnet(x = x_pac_percent_change, y = y_pac_percent_change)
+coef(lasso_PAC_growth)
+```
+
+#### Significant model
+
+```{r}
+multivariate_PAC_growth <- lmer(Percent_Change ~ sd_Temperature + sd_TA + sd_pH + 
+  (1 | Genotype) + (1 | Cage_Uncaged),
+  data = model_data %>% filter(Species == "Pocillopora acuta")
+)
+summary(multivariate_PAC_growth)
+car::Anova(multivariate_PAC_growth)
+plot(allEffects(multivariate_PAC_growth))
+
+#check_model(multivariate_PAC_growth)
+```
+
+
+### PRU
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Percent_Change","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+PRU_lasso$Cage_Uncaged <- as.factor(PRU_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_percent_change <- PRU_model_data_matrix[, -1]
+y_PRU_percent_change <- PRU_model_data_matrix[, 1]
+lasso_PRU_growth <- cv.glmnet(x = x_PRU_percent_change, y = y_PRU_percent_change)
+coef(lasso_PRU_growth)
+```
+
+### PRU Caged Only
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso_c <- PRU_model_data_caged_only[,c("Percent_Change","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso_c$Genotype <- as.factor(PRU_lasso_c$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso_c)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso_c <- cbind(PRU_lasso_c, genotype_dummies)
+PRU_lasso_c <- PRU_lasso_c %>% dplyr::select(-Genotype)
+
+#lasso works on matrix
+PRU_model_data_matrix_c <- as.matrix(PRU_lasso_c)
+
+x_PRU_percent_change_c <- PRU_model_data_matrix_c[, -1]
+y_PRU_percent_change_c <- PRU_model_data_matrix_c[, 1]
+lasso_PRU_growth_c <- cv.glmnet(x = x_PRU_percent_change_c, y = y_PRU_percent_change_c)
+coef(lasso_PRU_growth_c)
+```
+
+## Symb Abundance
+
+### PAC
+```{r}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("FSC.Events_per_cm_2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+PAC_lasso <- PAC_lasso %>% 
+  mutate(FSC.Events_per_cm_2 = log10(FSC.Events_per_cm_2)) 
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+PAC_lasso$Cage_Uncaged <- as.factor(PAC_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_symb <- PAC_model_data_matrix[, -1]
+y_pac_symb <- PAC_model_data_matrix[, 1]
+lasso_PAC_symb <- cv.glmnet(x = x_pac_symb, y = y_pac_symb)
+coef(lasso_PAC_symb)
+```
+
+### PRU
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("FSC.Events_per_cm_2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+PRU_lasso <- PRU_lasso %>% 
+  mutate(FSC.Events_per_cm_2 = log10(FSC.Events_per_cm_2)) %>% 
+  filter(!is.na(FSC.Events_per_cm_2))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+PRU_lasso$Cage_Uncaged <- as.factor(PRU_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_symb <- PRU_model_data_matrix[, -1]
+y_PRU_symb <- PRU_model_data_matrix[, 1]
+lasso_PRU_symb <- cv.glmnet(x = x_PRU_symb, y = y_PRU_symb)
+coef(lasso_PRU_symb)
+```
+
+#### PRU Caged Only
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data_caged_only[,c("FSC.Events_per_cm_2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+PRU_lasso <- PRU_lasso %>% 
+  mutate(FSC.Events_per_cm_2 = log10(FSC.Events_per_cm_2)) %>% 
+  filter(!is.na(FSC.Events_per_cm_2))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_symb <- PRU_model_data_matrix[, -1]
+y_PRU_symb <- PRU_model_data_matrix[, 1]
+lasso_PRU_symb <- cv.glmnet(x = x_PRU_symb, y = y_PRU_symb)
+coef(lasso_PRU_symb)
+```
+
+whole lotta nothing
+
+## Heterotrophy
+
+### Carbon
+
+#### PAC
+```{r}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Δ13C","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ13C))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_13c <- PAC_model_data_matrix[, -1]
+y_pac_13c <- PAC_model_data_matrix[, 1]
+lasso_PAC_13c <- cv.glmnet(x = x_pac_13c, y = y_pac_13c)
+coef(lasso_PAC_13c)
+```
+
+#### PRU
+
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Δ13C","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ13C))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_13c <- PRU_model_data_matrix[, -1]
+y_PRU_13c <- PRU_model_data_matrix[, 1]
+lasso_PRU_13c <- cv.glmnet(x = x_PRU_13c, y = y_PRU_13c)
+coef(lasso_PRU_13c)
+```
+
+nothin again
+
+### Nitrogen
+
+#### PAC
+```{r}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Δ15N","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ15N))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_15N <- PAC_model_data_matrix[, -1]
+y_pac_15N <- PAC_model_data_matrix[, 1]
+lasso_PAC_15N <- cv.glmnet(x = x_pac_15N, y = y_pac_15N)
+coef(lasso_PAC_15N)
+```
+
+#### PRU
+
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Δ15N","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ15N))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_15N <- PRU_model_data_matrix[, -1]
+y_PRU_15N <- PRU_model_data_matrix[, 1]
+lasso_PRU_15N <- cv.glmnet(x = x_PRU_15N, y = y_PRU_15N)
+coef(lasso_PRU_15N)
+```
