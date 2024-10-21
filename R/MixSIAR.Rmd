@@ -1,0 +1,355 @@
+---
+title: "MixSIAR"
+author: "Callie Stephenson"
+date: "2024-10-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(here)
+library(MixSIAR)
+library(readr)
+mixsiar.dir <- find.package("MixSIAR")
+```
+
+# Create source and consumder data frames
+```{r create consumer data}
+#Coral_SI <- read.csv("../data/SI_Tidy.csv")
+Coral_SI <- read.csv("data/SI_Tidy.csv")
+Coral_SI <- Coral_SI[,c("Pin_Number", "δ13C", "δ15N", "Genotype", "Species", "HS")] %>% 
+  filter(Pin_Number != "T0") %>% 
+  rename(d13C = δ13C,d15N = δ15N) %>% 
+  select(-Pin_Number) %>%
+  mutate(Species = as.factor(Species)) %>% 
+  mutate(Genotype = as.factor(Genotype))
+
+Consumer_SI <- Coral_SI %>% 
+  filter(HS == "host")
+
+PAC_Consumer_SI <- Consumer_SI %>% 
+  filter(Species == "Pocillopora acuta")
+
+PRU_Consumer_SI <- Consumer_SI %>% 
+  filter(Species == "Porites rus")
+
+write_csv(PAC_Consumer_SI, here("data","PAC_MixSIAR_Consumer.csv"))
+write_csv(PRU_Consumer_SI, here("data","PRU_MixSIAR_Consumer.csv"))
+```
+
+```{r create source data}
+#Zoop_POM_SI <- read.csv("../data/SI_Zoop.csv")
+Zoop_POM_SI <- read.csv("data/SI_Zoop.csv")
+Zoop_POM_SI$del13C <- Zoop_POM_SI$δ13C............vs..VPDB.
+Zoop_POM_SI$del15N <- Zoop_POM_SI$δ15N...........vs..AIR.
+
+ZP_Source <- Zoop_POM_SI %>% 
+  mutate(X = paste(POM_Zoop, Seep_Out, sep= " ")) %>% 
+  group_by(X) %>% 
+#  group_by(POM_Zoop, Seep_Out) %>% 
+  summarize(Meand13C = mean(del13C),
+            SDd13C = sd(del13C),
+            Meand15N = mean(del15N),
+            SDd15N = sd(del15N),
+            n = n(),
+            .groups = 'drop')
+#  mutate(X = POM_Zoop) %>% 
+#  mutate(Region = as.factor(Seep_Out)) %>% 
+  # select(-Seep_Out) %>% 
+  # select(-POM_Zoop) 
+
+Symb_join <- Coral_SI %>% 
+  filter(HS == "symb") %>% 
+  group_by(Species) %>% 
+#  group_by(POM_Zoop, Seep_Out) %>% 
+  summarize(Meand13C = mean(d13C),
+            SDd13C = sd(d13C),
+            Meand15N = mean(d15N),
+            SDd15N = sd(d15N),
+            n = n(),
+            .groups = 'drop') %>% 
+  mutate(X = paste("Symbiont"))
+#Symb_join$Region = paste("NA")
+
+PAC_Symb_join <- Symb_join %>% filter(Species == "Pocillopora acuta") %>%
+  select(-Species)
+PRU_Symb_join <- Symb_join %>% filter(Species == "Porites rus")%>% 
+  select(-Species)
+
+PAC_ZPS_Source <- rbind(ZP_Source, PAC_Symb_join)
+PRU_ZPS_Source <- rbind(ZP_Source, PRU_Symb_join)
+
+write_csv(PAC_ZPS_Source, here("data","PAC_MixSIAR_Source.csv"))
+write_csv(PRU_ZPS_Source, here("data","PRU_MixSIAR_Source.csv"))
+```
+
+# Create iscrim
+
+## Mostly sourced from Price Paper
+```{r create discr}
+discr <- data.frame(
+  X = unique(PAC_ZPS_Source$X),
+  Meand13C = c(1.0, 1.0, 1.0, 1.0, -12.1),
+  SDd13C = c(1.0, 1.0, 1.0, 1.0, 3.0),
+  Meand15N = c(3.4, 3.4, 3.4, 3.4, 0.0),
+  SDd15N = c(1.0, 1.0, 1.0, 1.0, 0.0)
+)
+
+discr2 <- data.frame(
+  X = unique(PAC_ZPS_Source$X),
+  Meand13C = c(1.0, 1.0, 1.0, 1.0, 0),
+  SDd13C = c(1.0, 1.0, 1.0, 1.0, 0),
+  Meand15N = c(3.4, 3.4, 3.4, 3.4, 0.0),
+  SDd15N = c(1.0, 1.0, 1.0, 1.0, 0.0)
+)
+
+
+write_csv(discr, here("data","discr.csv"))
+write_csv(discr2, here("data","discr2.csv"))
+```
+
+# PAC
+```{r PAC mix}
+mix.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PAC_MixSIAR_Consumer.csv"
+mix <- load_mix_data(filename=mix.filename, 
+                     iso_names=c("d13C","d15N"), 
+                     fac_random = NULL,           # No random effects
+                     fac_nested = NULL,
+                     factors = NULL,
+                     cont_effects=NULL)
+```
+
+```{r PAC source}
+source.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PAC_MixSIAR_Source.csv"
+
+source <- load_source_data(filename=source.filename,
+                           source_factors = NULL,
+                           conc_dep=FALSE, 
+                           data_type="means", 
+                           mix)
+```
+
+```{r PAC Discrim}
+discr.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/discr2.csv"
+discr <- load_discr_data(filename=discr.filename, mix)
+```
+
+## Plot
+```{r}
+plot_data(filename="PAC_isospace_plot", plot_save_pdf=TRUE, plot_save_png=TRUE, mix,source, discr)
+```
+
+```{r}
+if(mix$n.iso==2) calc_area(source=source,mix=mix,discr=discr)
+```
+
+
+## Plot Prior
+```{r}
+# default "UNINFORMATIVE" / GENERALIST prior (alpha = 1)
+plot_prior(alpha.prior=1,source)
+```
+
+##JAGS
+```{r}
+# Write the JAGS model file
+model_filename <- "MixSIAR_model.txt"   # Name of the JAGS model file
+resid_err <- FALSE
+process_err <- TRUE
+write_JAGS_model(model_filename, resid_err, process_err, mix, source)
+```
+
+```{r}
+test_jags <- run_model(run="test", mix, source, discr, model_filename)
+```
+
+Test worked, try the real thing:
+```{r}
+jags.1 <- run_model(run="normal", mix, source, discr, model_filename)
+```
+
+does not converge
+Try longer run:
+```{r}
+jags.1 <- run_model(run="long", mix, source, discr, model_filename)
+```
+
+##JAGS Plots
+```{r}
+output_options <- list(summary_save = TRUE,
+                       summary_name = "summary_statistics",
+                       sup_post = FALSE,
+                       plot_post_save_pdf = TRUE,
+                       plot_post_name = "posterior_density",
+                       sup_pairs = FALSE,
+                       plot_pairs_save_pdf = TRUE,
+                       plot_pairs_name = "pairs_plot",
+                       sup_xy = TRUE,
+                       plot_xy_save_pdf = FALSE,
+                       plot_xy_name = "xy_plot",
+                       gelman = TRUE,
+                       heidel = FALSE,
+                       geweke = TRUE,
+                       diag_save = TRUE,
+                       diag_name = "diagnostics",
+                       indiv_effect = FALSE,
+                       plot_post_save_png = FALSE,
+                       plot_pairs_save_png = FALSE,
+                       plot_xy_save_png = FALSE,
+                       diag_save_ggmcmc = FALSE)
+```
+##Output
+```{r}
+output_JAGS(jags.1, mix, source, output_options)
+```
+
+
+###########################################################
+
+# PRU
+
+```{r PRU mix}
+mix.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PRU_MixSIAR_Consumer.csv"
+mix <- load_mix_data(filename=mix.filename, 
+                     iso_names=c("d13C","d15N"), 
+                     fac_random = NULL,           # No random effects
+                     fac_nested = NULL,
+                     factors = NULL,
+                     cont_effects=NULL)
+```
+
+```{r PRU source}
+source.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/PRU_MixSIAR_Source.csv"
+
+source <- load_source_data(filename=source.filename,
+                           source_factors = NULL,
+                           conc_dep=FALSE, 
+                           data_type="means", 
+                           mix)
+```
+
+```{r PAC/PRU Discrim}
+discr.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/discr2.csv"
+discr <- load_discr_data(filename=discr.filename, mix)
+```
+
+## Plot
+```{r}
+plot_data(filename="isospace_plot", plot_save_pdf=FALSE, plot_save_png=TRUE, mix,source, discr)
+```
+
+# Plot Prior
+```{r}
+# default "UNINFORMATIVE" / GENERALIST prior (alpha = 1)
+plot_prior(alpha.prior=1,source)
+```
+
+#JAGS
+```{r}
+# Write the JAGS model file
+model_filename <- "MixSIAR_model.txt"   # Name of the JAGS model file
+resid_err <- TRUE
+process_err <- TRUE
+write_JAGS_model(model_filename, resid_err, process_err, mix, source)
+```
+
+```{r}
+test_jags <- run_model(run="test", mix, source, discr, model_filename)
+```
+
+Test worked, try the real thing:
+```{r}
+jags.1 <- run_model(run="normal", mix, source, discr, model_filename)
+```
+
+#JAGS Plots
+```{r}
+output_options <- list(summary_save = TRUE,
+                       summary_name = "summary_statistics",
+                       sup_post = FALSE,
+                       plot_post_save_pdf = TRUE,
+                       plot_post_name = "posterior_density",
+                       sup_pairs = FALSE,
+                       plot_pairs_save_pdf = TRUE,
+                       plot_pairs_name = "pairs_plot",
+                       sup_xy = TRUE,
+                       plot_xy_save_pdf = FALSE,
+                       plot_xy_name = "xy_plot",
+                       gelman = TRUE,
+                       heidel = FALSE,
+                       geweke = TRUE,
+                       diag_save = TRUE,
+                       diag_name = "diagnostics",
+                       indiv_effect = FALSE,
+                       plot_post_save_png = FALSE,
+                       plot_pairs_save_png = FALSE,
+                       plot_xy_save_png = FALSE,
+                       diag_save_ggmcmc = FALSE)
+```
+
+```{r}
+output_JAGS(jags.1, mix, source, output_options)
+```
+
+
+###########################################################
+###########################################################
+###########################################################
+###########################################################
+# Wolves
+## consumer source
+```{r wolf mix data}
+paste0(mixsiar.dir,"/example_scripts")
+mix.filename <- system.file("extdata", "wolves_consumer.csv", package = "MixSIAR")
+mix <- load_mix_data(filename=mix.filename, 
+                     iso_names=c("d13C","d15N"), 
+                     factors=c("Region","Pack"), 
+                     fac_random=c(TRUE,TRUE), 
+                     fac_nested=c(FALSE,TRUE), 
+                     cont_effects=NULL)
+wolves_consumer <- read.csv(mix.filename)
+# Replace the system.file call with the path to your file
+source.filename <- system.file("extdata", "wolves_sources.csv", package = "MixSIAR")
+
+# Load the source data
+source <- load_source_data(filename=source.filename,
+                           source_factors="Region", 
+                           conc_dep=FALSE, 
+                           data_type="means", 
+                           mix)
+
+wolves_source <- read.csv(source.filename)
+```
+
+## discrim
+```{r}
+# Replace the system.file call with the path to your file
+discr.filename <- system.file("extdata", "wolves_discrimination.csv", package = "MixSIAR")
+wolves_discr <- read.csv(discr.filename)
+# Load the discrimination/TDF data
+discr <- load_discr_data(filename=discr.filename, mix)
+```
+#Lake
+```{r}
+# Replace the system.file call with the path to your file
+mix.filename <- system.file("extdata", "lake_consumer.csv", package = "MixSIAR")
+
+lake_mix <- read.csv(mix.filename)
+
+mix <- load_mix_data(filename=mix.filename,
+                     iso_names=c("d13C","d15N"),
+                     factors=NULL,
+                     fac_random=NULL,
+                     fac_nested=NULL,
+                     cont_effects="Secchi.Mixed")
+
+source.filename <- system.file("extdata", "lake_sources.csv", package = "MixSIAR")
+
+source <- load_source_data(filename=source.filename,
+                           source_factors=NULL,
+                           conc_dep=FALSE,
+                           data_type="raw",
+                           mix)
+lake_source <- read.csv(source.filename)
+```
+

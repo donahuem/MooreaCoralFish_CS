@@ -638,7 +638,7 @@ Sites<-wide_maxn_df[c(1)]
 #Transform
 
 ##hellinger transformation is a common transformation with community data when you have a lot of zeros
-Fish_com <- decostand(Fish2, method = "max" )
+Fish_com <- decostand(Fish2, method = "max")
 #Fish_com <- decostand(Fish2, method = "hellinger" )
 
 ##constructing the dissimilarity matrix, using bray -curtis "how differently are they different"

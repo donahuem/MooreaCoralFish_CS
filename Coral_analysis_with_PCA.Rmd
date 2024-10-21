@@ -19,13 +19,13 @@ library(tidyverse)
 library(here)
 library(fishualize)
 library(lme4)
-library(lmerTest) #figure out which lme package you need
 library(ggplot2)
 library(performance)
 library(see)
 library(dplyr)
 library(car)
 library(PerformanceAnalytics)
+library(corrplot)
 library(glmnet)
 library(effects)
 ```
@@ -106,6 +106,14 @@ loadings(pca)
 ```{r}
 biplot(pca)
 ```
+
+```{r}
+pulse_df <- as.data.frame(lapply(nut_no_seep_scaled[, c(pulse_columns)], as.numeric))
+cor_matrix <- cor(pulse_df)
+corrplot(cor_matrix, method = "number")
+chart.Correlation(pulse_df)
+```
+
 
 
 ### PCA of sd - doesn't work
@@ -198,13 +206,6 @@ linear_growth_model_pac <- lmer(Percent_Change ~ pc1 +
 Anova(linear_growth_model_pac)
 ```
 
-```{r sd linear growth}
-# linear_growth_model_pac <- lmer(Percent_Change ~ sd_pc1 + sd_pc2 +
-#                                   (1|Genotype) + (1|Cage_Uncaged), data = PAC_model_data)
-# #check_model(linear_growth_model_pac)
-# #summary(linear_growth_model_pac)
-# car::Anova(linear_growth_model_pac)
-```
 This model does not support the hypothesis that nutriencts from SGD contribute to the variance in calcification in Pocillopora acuta
 
 #### polynomial model: 

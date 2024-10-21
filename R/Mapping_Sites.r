@@ -57,8 +57,6 @@ VarariBaseMap<-get_map(LocationGPS %>% filter(Location == "Varari") %>%
                          mutate(lat = lat + 0.0002),
                        maptype = 'satellite',
                        zoom = 19)
-#This will set your API key for the current session, but if you restart R, you'll need to do it again.
-#register_google(key="AIzaSyBZ7e0rTbSIR1TwNMH1OI9Bq4dAIPeWoMY")
 
 # base map
 # Varari
