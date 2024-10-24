@@ -87,24 +87,24 @@ write_csv(PRU_ZPS_Source, here("data","PRU_MixSIAR_Source.csv"))
 
 ## Mostly sourced from Price Paper
 ```{r create discr}
-discr <- data.frame(
-  X = unique(PAC_ZPS_Source$X),
-  Meand13C = c(1.0, 1.0, 1.0, 1.0, -12.1),
-  SDd13C = c(1.0, 1.0, 1.0, 1.0, 3.0),
-  Meand15N = c(3.4, 3.4, 3.4, 3.4, 0.0),
-  SDd15N = c(1.0, 1.0, 1.0, 1.0, 0.0)
-)
+# discr <- data.frame(
+#   X = unique(PAC_ZPS_Source$X),
+#   Meand13C = c(1.0, 1.0, 1.0, 1.0, -12.1),
+#   SDd13C = c(1.0, 1.0, 1.0, 1.0, 3.0),
+#   Meand15N = c(3.4, 3.4, 3.4, 3.4, 0.0),
+#   SDd15N = c(1.0, 1.0, 1.0, 1.0, 0.0)
+# )
 
 discr2 <- data.frame(
   X = unique(PAC_ZPS_Source$X),
-  Meand13C = c(1.0, 1.0, 1.0, 1.0, 0),
+  Meand13C = c(1.0, 1.0, 1.0, 1.0, 1.0121),
   SDd13C = c(1.0, 1.0, 1.0, 1.0, 0),
   Meand15N = c(3.4, 3.4, 3.4, 3.4, 0.0),
   SDd15N = c(1.0, 1.0, 1.0, 1.0, 0.0)
 )
 
 
-write_csv(discr, here("data","discr.csv"))
+# write_csv(discr, here("data","discr.csv"))
 write_csv(discr2, here("data","discr2.csv"))
 ```
 

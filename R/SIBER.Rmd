@@ -22,8 +22,8 @@ rm(list=ls())# remove previously loaded items from the current environment and r
 graphics.off()
 
 # Load your data
-SI <- read.csv("../data/SI_Tidy.csv")
-#SI <- read.csv("data/SI_Tidy.csv")
+#SI <- read.csv("../data/SI_Tidy.csv")
+SI <- read.csv("data/SI_Tidy.csv")
 demo.siber.data <- SI[, c("δ13C", "δ15N", "HS", "Species")]
 
 rus.siber.data <- demo.siber.data %>% 
@@ -40,6 +40,19 @@ colnames(acuta.demo.siber.data) <- c("iso1", "iso2", "group", "community")
 all.siber <- createSiberObject(demo.siber.data)
 rus.siber.example <- createSiberObject(rus.siber.data)
 acuta.siber.example <- createSiberObject(acuta.demo.siber.data)
+
+# for Hotelling things
+acuta.hotellings.data <- data.frame(
+  group = as.numeric(as.factor(acuta.demo.siber.data$group)),
+  x = acuta.demo.siber.data$iso1,
+  y = acuta.demo.siber.data$iso2
+)
+
+rus.hotellings.data <- data.frame(
+  group = as.numeric(as.factor(rus.siber.data$group)),
+  x = rus.siber.data$iso1,
+  y = rus.siber.data$iso2
+)
 ```
 
 Ellipses are drawn for each group independently with ellipses = T. These ellipses can be made to be maximum likelihood standard ellipses by setting p = NULL, or can be made to be prediction ellipses that contain approximately p proportion of data. For example, p = 0.95 will draw an ellipse that encompasses approximately 95% of the data. The parameter n determines how many points are used to make each ellipse and hence how smooth the curves are.
@@ -68,6 +81,7 @@ plotSiberObject(rus.siber.example,
                 col = c("blue", "green")
                   )
 mtext("40% SEAc = 29.36% \n 95% SEAc = 46.15%", side = 3, line = 0, cex = 0.75)
+
 
 plotSiberObject(acuta.siber.example,
                   ax.pad = 2, 
@@ -98,31 +112,31 @@ legend("center", legend = levels(acuta.siber.example$group.names[[1]]),
 One feature of the Standard Ellipse is that it contains approximately 40% of the data. SIBER now includes code to scale this ellipse so that it contains approximately any % of the data you wish. Additionally, the ellipse can be scaled so that it represents a % confidence ellipse of the bivariate means (rather than of the data). We create the bi-plot again here and this time add the additional ellipses overlayed on the basic plot that this time omits group hulls and group standard ellipses.
 
 ```{r}
-par(mfrow=c(1,1))
-
-community.hulls.args <- list(col = 1, lty = 1, lwd = 1)
-group.ellipses.args  <- list(n = 100, p.interval = 0.95, lty = 1, lwd = 2)
-group.hull.args      <- list(lty = 2, col = "grey20")
-
-# this time we will make the points a bit smaller by 
-# cex = 0.5
-plotSiberObject(siber.example,
-                  ax.pad = 2, 
-                  hulls = F, community.hulls.args, 
-                  ellipses = F, group.ellipses.args,
-                  group.hulls = F, group.hull.args,
-                  bty = "L",
-                  iso.order = c(1,2),
-                  xlab=expression({delta}^13*C~'permille'),
-                  ylab=expression({delta}^15*N~'permille'),
-                  cex = 0.5
-                  )
-# You can add more ellipses by directly calling plot.group.ellipses()
-# Add an additional p.interval % prediction ellilpse
-plotGroupEllipses(siber.example, n = 100, p.interval = 0.45,
-                    lty = 1, lwd = 2)
-plotGroupEllipses(siber.example, n = 100, p.interval = 0.95,
-                    lty = 1, lwd = 2)
+# par(mfrow=c(1,1))
+# 
+# community.hulls.args <- list(col = 1, lty = 1, lwd = 1)
+# group.ellipses.args  <- list(n = 100, p.interval = 0.95, lty = 1, lwd = 2)
+# group.hull.args      <- list(lty = 2, col = "grey20")
+# 
+# # this time we will make the points a bit smaller by 
+# # cex = 0.5
+# plotSiberObject(siber.example,
+#                   ax.pad = 2, 
+#                   hulls = F, community.hulls.args, 
+#                   ellipses = F, group.ellipses.args,
+#                   group.hulls = F, group.hull.args,
+#                   bty = "L",
+#                   iso.order = c(1,2),
+#                   xlab=expression({delta}^13*C~'permille'),
+#                   ylab=expression({delta}^15*N~'permille'),
+#                   cex = 0.5
+#                   )
+# # You can add more ellipses by directly calling plot.group.ellipses()
+# # Add an additional p.interval % prediction ellilpse
+# plotGroupEllipses(siber.example, n = 100, p.interval = 0.45,
+#                     lty = 1, lwd = 2)
+# plotGroupEllipses(siber.example, n = 100, p.interval = 0.95,
+#                     lty = 1, lwd = 2)
 
 # or you can add the XX% confidence interval around the bivariate means
 # by specifying ci.mean = T along with whatever p.interval you want.
@@ -137,8 +151,8 @@ print(group.ML)
 group.ML <- groupMetricsML(acuta.siber.example)
 print(group.ML)
 
-group.ML <- groupMetricsML(siber.example)
-print(group.ML)
+# group.ML <- groupMetricsML(siber.example)
+# print(group.ML)
 ```
 
 Whether your intended analysis is to compare isotopic niche width among groups, or among communities, the initial step is to fit Bayesian multivariate normal distributions to each group in the dataset. The decision as to whether you then want to compare the area of the ellipses among groups, or any / all of the 6 Layman metrics comes later.
@@ -247,19 +261,20 @@ print(prop.of.both)
 A problem with this simple overlap calculation is that it yields a point-estimate of overlap based on the maximum likelihood estimated SEA_c. One can instead calculate a distribution of overlap based on the posterior distributions of the fitted ellipses. It can be a bit slow to calculate this overlap, so you may want to drop the number of draws if your computer is slow.
 
 ```{r}
-bayes.overlap.G2.G3 <- bayesianOverlap("Porites rus.host", "Porites rus.symb", ellipses.posterior, 
+bayes.overlap.G2.G3 <- bayesianOverlap("Porites rus.host", "Porites rus.symb", rus.ellipses.posterior, 
                                        draws = 20, p.interval = 0.95,
                                        n = 360)
 mean(bayes.overlap.G2.G3$overlap / (bayes.overlap.G2.G3$area1 + bayes.overlap.G2.G3$area2))
 ```
 
+bayes overlap = 0.2735595
 ```{r}
-bayes.overlap.G2.G3 <- bayesianOverlap("Pocillopora acuta.host", "Pocillopora acuta.symb", ellipses.posterior, 
+bayes.overlap.G2.G3 <- bayesianOverlap("Pocillopora acuta.host", "Pocillopora acuta.symb", acuta.ellipses.posterior, 
                                        draws = 20, p.interval = 0.95,
                                        n = 360)
 mean(bayes.overlap.G2.G3$overlap / (bayes.overlap.G2.G3$area1 + bayes.overlap.G2.G3$area2))
 ```
-
+bayes overlap = 0.3232299 
 
 ### GGPLOT
 ```{r}
@@ -371,5 +386,112 @@ annotation <- first.plot +
             hjust = 0, vjust = 0)
 
 print(annotation)
+```
+
+# Hotelling
+```{r}
+source('R/Turner.et.al.ecology.source.r') #load in necessary functions
+```
+
+## PAC
+```{r}
+Y<-as.matrix(acuta.hotellings.data[,2:3])
+
+# Designate groups
+group<-as.factor(acuta.hotellings.data[,1])
+gp<-length(levels(group)) # number of groups
+n.comp<-(gp^2-gp)/2 # number of possible comparisons
+rownames(Y)<-group 
+
+lm.gp<-lm(Y~group,x=T,model=T) # for estimating group means
+#This outputs the centroid of one group and distance in x and y to the centroid of the second group
+res.gp<-resid(lm.gp) # residuals of groups from group means
+yhat.gp<-predict(lm.gp) # predicted values
+
+lm.gp.red<-lm(Y~1) # this is the model reduced by the group factor: only estimates an overall mean
+
+# DISPERSION MEASURES
+ex1<-ds.prep(res.gp,group) # see source file
+ex1.ds<-disp.stat(ex1) # see source file
+
+# GROUP MEANS
+gp.m<-group.means(Y,group) # finds the group means for the raw data
+```
+
+```{r}
+#ADDENDUM: HOTELLING'S T2
+#Each group comparison one at a time
+
+#Comparing groups 1 (host) and 2 (symbiont) 
+gp.m.dif<-gp.m[1,]-gp.m[2,] # vector for difference between means
+gn<-tapply(group,group,length) # group sizes
+e<-resid(lm.gp)
+E<-t(e)%*%e
+n<-nrow(e)
+k<-lm.gp$rank
+V<-(1/(n-k))*E # This is the pooled within-group vcv
+
+d<-gp.m.dif; dim(d)<-c(1,length(d))
+
+D<-d%*%solve(V)%*%t(d) # Squared Mahalanobis Distance
+
+H.T2<-(gn[1]*gn[2])/(gn[1]+gn[2])*D # Hotelling T2
+
+F<-(gn[1]+gn[2]-2-1)/((gn[1]+gn[2])*2)*H.T2 # Convert to an F value
+
+P<-df(F,2,(gn[1]+gn[2]-2-1)) # P-value
+
+P
+```
+
+## PRU
+```{r}
+Y<-as.matrix(rus.hotellings.data[,2:3])
+
+# Designate groups
+group<-as.factor(rus.hotellings.data[,1])
+gp<-length(levels(group)) # number of groups
+n.comp<-(gp^2-gp)/2 # number of possible comparisons
+rownames(Y)<-group 
+
+lm.gp<-lm(Y~group,x=T,model=T) # for estimating group means
+#This outputs the centroid of one group and distance in x and y to the centroid of the second group
+res.gp<-resid(lm.gp) # residuals of groups from group means
+yhat.gp<-predict(lm.gp) # predicted values
+
+lm.gp.red<-lm(Y~1) # this is the model reduced by the group factor: only estimates an overall mean
+
+# DISPERSION MEASURES
+ex1<-ds.prep(res.gp,group) # see source file
+ex1.ds<-disp.stat(ex1) # see source file
+
+# GROUP MEANS
+gp.m<-group.means(Y,group) # finds the group means for the raw data
+```
+
+```{r}
+#ADDENDUM: HOTELLING'S T2
+#Each group comparison one at a time
+
+#Comparing groups 1 (host) and 2 (symbiont) 
+gp.m.dif<-gp.m[1,]-gp.m[2,] # vector for difference between means
+gn<-tapply(group,group,length) # group sizes
+e<-resid(lm.gp)
+E<-t(e)%*%e
+n<-nrow(e)
+k<-lm.gp$rank
+V<-(1/(n-k))*E # This is the pooled within-group vcv
+
+d<-gp.m.dif; dim(d)<-c(1,length(d))
+
+D<-d%*%solve(V)%*%t(d) # Squared Mahalanobis Distance
+
+H.T2<-(gn[1]*gn[2])/(gn[1]+gn[2])*D # Hotelling T2
+
+F<-(gn[1]+gn[2]-2-1)/((gn[1]+gn[2])*2)*H.T2 # Convert to an F value
+
+P<-df(F,2,(gn[1]+gn[2]-2-1)) # P-value
+
+P
 ```
 
