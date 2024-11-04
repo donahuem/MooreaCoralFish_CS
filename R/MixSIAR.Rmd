@@ -10,6 +10,7 @@ library(dplyr)
 library(here)
 library(MixSIAR)
 library(readr)
+library(ggpubr)
 mixsiar.dir <- find.package("MixSIAR")
 ```
 
@@ -103,9 +104,20 @@ discr2 <- data.frame(
   SDd15N = c(1.0, 1.0, 1.0, 1.0, 0.0)
 )
 
+#Wang et al 2024
+#In this study, we considered trophic enrichment factors (TEF) of 0.5 ± 1.3‰ for δ13C and 2.3 ± 1.5‰ for δ15N between corals and sources, assuming empirical values typical of invertebrates [35]. A lower TEF for δ15N (1.5 ± 1.3‰) was applied between coral hosts and symbionts to account for nitrogen recycling, as previously described [14,36]. We confirmed that the isotopic composition of coral hosts fell within the mixing polygon defined by the potential sources when considering the TEF [34] (Fig. S3).
+discr3 <- data.frame(
+  X = unique(PAC_ZPS_Source$X), #"POM Out"   "POM Seep"  "ZOOP Out"  "ZOOP Seep" "Symbiont" 
+  Meand13C = c(0.5, 0.5, 0.5, 0.5, 0.5),
+  SDd13C = c(1.3, 1.3, 1.3, 1.3, 1.3),
+  Meand15N = c(2.3, 2.3, 2.3, 2.3, 1.5),
+  SDd15N = c(1.5, 1.5, 1.5, 1.5, 1.3)
+)
+
 
 # write_csv(discr, here("data","discr.csv"))
-write_csv(discr2, here("data","discr2.csv"))
+# write_csv(discr2, here("data","discr2.csv"))
+write_csv(discr3, here("data","discr3.csv"))
 ```
 
 # PAC
@@ -130,13 +142,13 @@ source <- load_source_data(filename=source.filename,
 ```
 
 ```{r PAC Discrim}
-discr.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/discr2.csv"
+discr.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/discr3.csv"
 discr <- load_discr_data(filename=discr.filename, mix)
 ```
 
 ## Plot
 ```{r}
-plot_data(filename="PAC_isospace_plot", plot_save_pdf=TRUE, plot_save_png=TRUE, mix,source, discr)
+plot_data(filename="PAC_isospace_plot", plot_save_pdf=FALSE, plot_save_png=TRUE, mix,source, discr)
 ```
 
 ```{r}
@@ -176,21 +188,21 @@ jags.1 <- run_model(run="long", mix, source, discr, model_filename)
 
 ##JAGS Plots
 ```{r}
-output_options <- list(summary_save = TRUE,
+output_options <- list(summary_save = FALSE,
                        summary_name = "summary_statistics",
                        sup_post = FALSE,
-                       plot_post_save_pdf = TRUE,
+                       plot_post_save_pdf = FALSE,
                        plot_post_name = "posterior_density",
                        sup_pairs = FALSE,
-                       plot_pairs_save_pdf = TRUE,
+                       plot_pairs_save_pdf = FALSE,
                        plot_pairs_name = "pairs_plot",
-                       sup_xy = TRUE,
+                       sup_xy = FALSE,
                        plot_xy_save_pdf = FALSE,
                        plot_xy_name = "xy_plot",
-                       gelman = TRUE,
+                       gelman = FALSE,
                        heidel = FALSE,
-                       geweke = TRUE,
-                       diag_save = TRUE,
+                       geweke = FALSE,
+                       diag_save = FALSE,
                        diag_name = "diagnostics",
                        indiv_effect = FALSE,
                        plot_post_save_png = FALSE,
@@ -203,6 +215,51 @@ output_options <- list(summary_save = TRUE,
 output_JAGS(jags.1, mix, source, output_options)
 ```
 
+```{r}
+# Create a dataframe manually based on the summary statistics
+PAC_MixSIAR <- data.frame(
+  Source = c("Non-SGD POM", "Seep POM", "Symbiont", "Non-SGD Zooplankton", "Seep Zooplankton"),
+  Mean = c(0.032, 0.029, 0.806, 0.103, 0.030),
+  SD = c(0.028, 0.028, 0.064, 0.076, 0.027),
+  Lower_2_5 = c(0.001, 0.001, 0.659, 0.004, 0.001),
+  Lower_25 = c(0.011, 0.009, 0.770, 0.045, 0.009),
+  Median_50 = c(0.025, 0.021, 0.814, 0.088, 0.022),
+  Upper_75 = c(0.047, 0.041, 0.850, 0.144, 0.042),
+  Upper_97_5 = c(0.100, 0.105, 0.908, 0.281, 0.100)
+)
+
+PAC_MixSIAR$Source <- factor(PAC_MixSIAR$Source, levels = PAC_MixSIAR$Source[order(-PAC_MixSIAR$Mean)])
+
+```
+
+```{r Whisker plot PAC}
+my_title <- expression(paste(italic("Pocillopora acuta")))
+# Create a boxplot using ggplot2
+MixSIAR_PAC <- ggplot(PAC_MixSIAR, aes(x = Source)) +
+  geom_boxplot(
+    aes(
+      ymin = Lower_2_5 * 100, 
+      lower = Lower_25 * 100, 
+      middle = Median_50 * 100, 
+      upper = Upper_75 * 100, 
+      ymax = Upper_97_5 * 100,
+      fill = ifelse(grepl("Seep", Source), "Seep-derived \n Heterotrophy",  # Check if Source contains "Seep"
+                    ifelse(Source == "Symbiont", "Autotrophy", "Heterotrophy"))  # Existing conditions
+    ), 
+    stat = "identity",
+    alpha = 0.5
+  ) +
+  geom_point(aes(y = Mean * 100), color = "black", size = 2) +  # Add mean points
+  scale_fill_manual(values = c("Autotrophy" = "#21908c", "Heterotrophy" = "#47c16e", "Seep-derived \n Heterotrophy" = "#fde725"), name = NULL) +  # Add yellow for Seep
+  labs(title = my_title, y = "Proportional Contribution", x="") +
+  theme_minimal() +  # Keep this and combine the next theme settings
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center the title
+    axis.text.x = element_text(angle = 45, hjust = 1) 
+  )
+
+MixSIAR_PAC
+```
 
 ###########################################################
 
@@ -229,13 +286,13 @@ source <- load_source_data(filename=source.filename,
 ```
 
 ```{r PAC/PRU Discrim}
-discr.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/discr2.csv"
+discr.filename <- "/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/discr3.csv"
 discr <- load_discr_data(filename=discr.filename, mix)
 ```
 
 ## Plot
 ```{r}
-plot_data(filename="isospace_plot", plot_save_pdf=FALSE, plot_save_png=TRUE, mix,source, discr)
+plot_data(filename="PRU_isospace_plot", plot_save_pdf=TRUE, plot_save_png=FALSE, mix,source, discr)
 ```
 
 # Plot Prior
@@ -248,7 +305,7 @@ plot_prior(alpha.prior=1,source)
 ```{r}
 # Write the JAGS model file
 model_filename <- "MixSIAR_model.txt"   # Name of the JAGS model file
-resid_err <- TRUE
+resid_err <- FALSE
 process_err <- TRUE
 write_JAGS_model(model_filename, resid_err, process_err, mix, source)
 ```
@@ -291,8 +348,116 @@ output_options <- list(summary_save = TRUE,
 output_JAGS(jags.1, mix, source, output_options)
 ```
 
+```{r }
+# Create a dataframe manually based on the summary statistics
+PRU_MixSIAR <- data.frame(
+  Source = c("Non-SGD POM", "Seep POM", "Symbiont", "Non-SGD Zooplankton", "Seep Zooplankton"),
+  Mean = c(0.036, 0.025, 0.850, 0.064, 0.025),
+  SD = c(0.030, 0.027, 0.047, 0.050, 0.023),
+  Lower_2_5 = c(0.001, 0.000, 0.753, 0.002, 0.001),
+  Lower_25 = c(0.013, 0.006, 0.820, 0.025, 0.008),
+  Median_50 = c(0.028, 0.016, 0.852, 0.053, 0.018),
+  Upper_75 = c(0.052, 0.034, 0.882, 0.093, 0.036),
+  Upper_97_5 = c(0.113, 0.099, 0.933, 0.181, 0.082)
+)
+
+PRU_MixSIAR$Source <- factor(PRU_MixSIAR$Source, levels = PRU_MixSIAR$Source[order(-PRU_MixSIAR$Mean)])
+```
+
+```{r Whisker Plot PRU}
+my_title <- expression(paste(italic("Porites rus")))
+# Assuming PRU_MixSIAR is your dataframe
+MixSIAR_PRU <- ggplot(PRU_MixSIAR, aes(x = Source)) +
+  geom_boxplot(
+    aes(
+      ymin = Lower_2_5 * 100, 
+      lower = Lower_25 * 100, 
+      middle = Median_50 * 100, 
+      upper = Upper_75 * 100, 
+      ymax = Upper_97_5 * 100,
+      fill = ifelse(grepl("Seep", Source), "Seep-derived \n Heterotrophy",  # Check if Source contains "Seep"
+                    ifelse(Source == "Symbiont", "Autotrophy", "Heterotrophy"))  # Existing conditions
+    ), 
+    stat = "identity",
+    alpha = 0.5
+  ) +
+  geom_point(aes(y = Mean * 100), color = "black", size = 2) +  # Add mean points
+  scale_fill_manual(values = c("Autotrophy" = "#21908c", "Heterotrophy" = "#47c16e", "Seep-derived \n Heterotrophy" = "#fde725"), name = NULL) +  # Add yellow for Seep
+  labs(title = my_title, y = "Proportional Contribution", x = "") +
+  theme_minimal() +  # Keep this and combine the next theme settings
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center the title
+    axis.text.x = element_text(angle = 45, hjust = 1) 
+  )
+
+# Print the plot
+MixSIAR_PRU
+```
+
+
+```{r}
+# Arrange the plots with a common title and sub-labels
+combined_plot <- ggarrange(MixSIAR_PRU + theme(legend.position = "none") + ylim(0,100), 
+                            MixSIAR_PAC + ylim(0,100),
+                            labels = c("A", "B"),
+                            ncol = 2, nrow = 1)
+
+# Add the common title
+combined_plot <- annotate_figure(combined_plot,
+                 top = text_grob("Contributions to δ13C", 
+                                 face = "bold", size = 14, 
+                                 just = "center"))
+
+# Print the final combined plot
+print(combined_plot)
+```
 
 ###########################################################
+# plotting differently
+```{r}
+PAC_MixSIAR$Species <- paste0("Pocillopora acuta")
+PRU_MixSIAR$Species <- paste0("Porites rus")
+
+MixSiar_results <- rbind(PAC_MixSIAR,PRU_MixSIAR)
+
+# Create a unique order for the Source levels
+MixSiar_results$Source <- factor(MixSiar_results$Source, 
+                                  levels = unique(MixSiar_results$Source[order(-MixSiar_results$Mean)]))
+
+#Plot
+MixSIAR_Plot <- ggplot(MixSiar_results, aes(x = Source)) +
+  geom_boxplot(
+    aes(
+      ymin = Lower_2_5 * 100, 
+      lower = Lower_25 * 100, 
+      middle = Median_50 * 100, 
+      upper = Upper_75 * 100, 
+      ymax = Upper_97_5 * 100,
+      fill = ifelse(grepl("Seep", Source), "Seep-derived Heterotrophy",  # Check if Source contains "Seep"
+                    ifelse(Source == "Symbiont", "Autotrophy", "Heterotrophy"))  # Existing conditions
+    ), 
+    stat = "identity",
+    alpha = 0.5
+  ) +
+  geom_point(aes(y = Mean * 100), color = "black", size = 2) +  # Add mean points
+  scale_fill_manual(values = c("Autotrophy" = "#21908c", "Heterotrophy" = "#47c16e", "Seep-derived Heterotrophy" = "#fde725"), name = NULL) +  # Add yellow for Seep
+  labs(title = "Contributions to δ13C", y = "Proportional Contribution to Host δ13C", x = "") +
+  facet_wrap(~Species) +
+  theme_minimal() +  # Keep this and combine the next theme settings
+  theme(
+    plot.title = element_text(hjust = 0.5),  # Center the title
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position="bottom",
+    strip.text = element_text(face = "italic")
+  ) + 
+  ylim(0,100)
+
+# Print the plot
+MixSIAR_Plot
+
+ggsave(MixSIAR_Plot, filename = "MixSIAR_Results.png", dpi = 600, width = 10, height = 8)
+```
+
 ###########################################################
 ###########################################################
 ###########################################################

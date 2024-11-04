@@ -4,7 +4,7 @@ author: "Callie Stephenson"
 date: "2024-09-25"
 output: html_document
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 # Question 1
 
@@ -28,6 +28,7 @@ library(PerformanceAnalytics)
 library(corrplot)
 library(glmnet)
 library(effects)
+library(ggpubr)
 ```
 
 ```{r load data, echo=FALSE, message=FALSE}
@@ -88,8 +89,9 @@ pulse_columns <- names(all_nut)[grepl("Low_Tide_Mean_", names(all_nut)) &
 nut_no_seep_scaled <- nut_no_seep %>%
   mutate(across(all_of(pulse_columns), scale))
 
-pca.data <- na.omit(nut_no_seep_scaled[, c(pulse_columns)])
+pca.data <- na.omit(nut_no_seep_scaled[, c(pulse_columns)]) 
 pca = princomp(pca.data, cor=TRUE)
+biplot(pca)
 ```
 
 When I make a PCA of 
@@ -105,6 +107,26 @@ loadings(pca)
 
 ```{r}
 biplot(pca)
+```
+
+```{r failed autoplot}
+pca_plot <- autoplot(pca, loadings = TRUE, loadings.colour = '#47c16e',
+                     loadings.label = TRUE, loadings.label.size = 3, loadings.label.colour = '#47c16e') +
+  labs(
+    title = "Principal Component Analysis of Nutrient Data",
+    x = "Principal Component 1 (72.249%)",
+    y = "Principal Component 2 (15.019%)"
+  ) +
+  xlim(-0.5,0.5)+
+#  scale_x_reverse(-0.5,0.5) +
+  theme_minimal(base_size = 15) +  # Clean theme
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),  # Center title
+    axis.title = element_text(size = 12)
+  )
+
+pca_plot
+#ggsave(pca_plot, filename = "PCA_Plot.png", dpi = 600, width = 7, height = 5)
 ```
 
 ```{r}
@@ -186,6 +208,7 @@ PRU_model_data_caged_only <- left_join(PRU_response_data_caged, nut_no_seep_scal
 ```
 
 
+
 ### Pocillopora acuta
 
 ```{r}
@@ -207,6 +230,7 @@ Anova(linear_growth_model_pac)
 ```
 
 This model does not support the hypothesis that nutriencts from SGD contribute to the variance in calcification in Pocillopora acuta
+
 
 #### polynomial model: 
 
@@ -626,9 +650,9 @@ prediction_data <- prediction_data %>%
 
 # Create the plot with the fitted line
 ggplot() +
-  geom_point(data = SI_PRU_model_data, aes(x = pc1, y = Δ15N)) +
-  geom_line(data = prediction_data, aes(x = pc1, y = fit), color = "blue") +  # Add the fitted line
-  geom_ribbon(data = prediction_data, aes(x = pc1, ymin = lower, ymax = upper), alpha = 0.2, fill = "blue") +  # Add CI
+  geom_point(data = SI_PRU_model_data, aes(x = pc1, y = Δ15N), color = "grey") +
+  geom_line(data = prediction_data, aes(x = pc1, y = fit), color = "#21908c") +  # Add the fitted line
+  geom_ribbon(data = prediction_data, aes(x = pc1, ymin = lower, ymax = upper), alpha = 0.2, fill = "#21908c") +  # Add CI
   labs(title = "Porites rus Δ15N (host minus symbiont, proxy for heterotrophy)",
        x = "PC1",
        y = "Δ15N") +
@@ -674,7 +698,11 @@ chart.Correlation(na.omit(model_data[,c("sd_Salinity","sd_Temperature", "sd_TA",
 ### PAC
 ```{r PAC lasso}
 # Remove the Pin_Number and Species columns
-PAC_lasso <- PAC_model_data[,c("Percent_Change","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+PAC_lasso <- PAC_model_data[,c("Percent_Change","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  mutate(sd_TA = scale(sd_TA))%>% 
+  mutate(sd_pH = scale(sd_pH))%>% 
+  mutate(sd_Salinity = scale(sd_Salinity))%>% 
+  mutate(sd_Temperature = scale(sd_Temperature))
 
 # Convert Genotype and Cage_Uncaged to factors if they are not already
 PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
@@ -702,7 +730,7 @@ coef(lasso_PAC_growth)
 ```{r}
 multivariate_PAC_growth <- lmer(Percent_Change ~ sd_Temperature + sd_TA + sd_pH + 
   (1 | Genotype) + (1 | Cage_Uncaged),
-  data = model_data %>% filter(Species == "Pocillopora acuta")
+  data = PAC_model_data
 )
 summary(multivariate_PAC_growth)
 car::Anova(multivariate_PAC_growth)
@@ -711,6 +739,98 @@ plot(allEffects(multivariate_PAC_growth))
 #check_model(multivariate_PAC_growth)
 ```
 
+##### Sig model plot
+```{r}
+pred_temp1 <- ggpredict(multivariate_PAC_growth, terms = "sd_Temperature")
+pred_ta <- ggpredict(multivariate_PAC_growth, terms = "sd_TA")
+pred_ph <- ggpredict(multivariate_PAC_growth, terms = "sd_pH")
+
+#annnotations
+anova_results <- car::Anova(multivariate_PAC_growth)
+p_values <- anova_results$`Pr(>Chisq)`[1:3]  # Adjust index based on your model's fixed effects
+names(p_values) <- rownames(anova_results)[1:3] 
+```
+
+```{r}
+custom_theme <- theme_minimal(base_size = 10)+
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10)
+  )
+```
+
+```{r}
+# Plot for sd_Temperature
+plot_temp <- ggplot() +
+  # Raw data points
+  geom_point(data = PAC_model_data, 
+             aes(x = sd_Temperature, y = Percent_Change), color = "grey50", alpha = 0.6) +
+  # Prediction line with confidence interval
+  geom_line(data = pred_temp, aes(x = x, y = predicted), color = "#21908c") +
+  geom_ribbon(data = pred_temp, aes(x = x, ymin = conf.low, ymax = conf.high), 
+              fill = "#21908c", alpha = 0.2) +
+  scale_y_continuous(limits = c(-1.5,25)) +
+  labs(
+    x = "Standard Deviation of Temperature",
+    y = "Percent Change in Buoyant Weight"
+  ) +
+  custom_theme+
+  annotate("text", y = 1, x = max(pred_temp$x, na.rm=TRUE), 
+           label = paste("p =", round(p_values["sd_Temperature"], 6)), 
+           hjust = 1.1, vjust = 1, size = 3)
+
+# Plot for sd_TA
+plot_ta <- ggplot() +
+  geom_point(data = PAC_model_data, 
+             aes(x = sd_TA, y = Percent_Change), color = "grey50", alpha = 0.6) +
+  geom_line(data = pred_ta, aes(x = x, y = predicted), color = "#21908c") +
+  geom_ribbon(data = pred_ta, aes(x = x, ymin = conf.low, ymax = conf.high), 
+              fill = "#21908c", alpha = 0.2) +
+  scale_y_continuous(limits = c(-1.5,25)) +
+  labs(
+    x = "Standard Deviation of TA", y = " "
+  ) +
+  custom_theme+
+  annotate("text", y = 1, x =max(pred_ta$x, na.rm=TRUE), 
+           label = paste("p =", round(p_values["sd_TA"], 6)), 
+           hjust = 1.1, vjust = 1, size = 3)
+
+# Plot for sd_pH
+plot_ph <- ggplot() +
+  geom_point(data = PAC_model_data, 
+             aes(x = sd_pH, y = Percent_Change), color = "grey50", alpha = 0.6) +
+  geom_line(data = pred_ph, aes(x = x, y = predicted), color = "#21908c") +
+  geom_ribbon(data = pred_ph, aes(x = x, ymin = conf.low, ymax = conf.high), 
+              fill = "#21908c", alpha = 0.2) +
+  scale_y_continuous(limits = c(-1.5,25)) +
+  labs(
+    x = "Standard Deviation of pH", y = " "
+  ) +
+  custom_theme+
+  annotate("text", y = 1, x =max(pred_ph$x, na.rm=TRUE), 
+           label = paste("p =", round(p_values["sd_pH"], 9)), 
+           hjust = 1.1, vjust = 1, size = 3)
+```
+
+```{r}
+combined_plot <- ggarrange(plot_temp + 
+                              labs(subtitle = "A") + 
+                              theme(plot.subtitle = element_text(hjust = -0.2, size = 12)),
+                            plot_ta + 
+                              labs(subtitle = "B") + 
+                              theme(plot.subtitle = element_text(hjust = -0.2, size = 12)),
+                            plot_ph + 
+                              labs(subtitle = "C") + 
+                              theme(plot.subtitle = element_text(hjust = -0.2, size = 12)),
+                            nrow = 1)+ 
+  ggtitle(expression("Effects of Variability on Growth in" ~ italic("Pocillopora acuta"))) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        plot.margin = margin(t = 20, r = 20, b = 20, l = 40))
+combined_plot
+ggsave(combined_plot, filename = "PAC_Percent_Change_Effects.png", dpi = 600, width = 10, height = 5)
+```
 
 ### PRU
 ```{r}
@@ -966,3 +1086,55 @@ y_PRU_15N <- PRU_model_data_matrix[, 1]
 lasso_PRU_15N <- cv.glmnet(x = x_PRU_15N, y = y_PRU_15N)
 coef(lasso_PRU_15N)
 ```
+
+
+# Playing with Danielle Data
+```{r}
+sp_data <- read.csv("data/Species_Abundances_wide.csv")
+danielle <- read.csv("data/Full_Metadata.csv")
+
+sp_data_pc <- left_join(sp_data, nut_no_seep_scaled[,c("CowTagID", "pc1", "sd_TA")],by = join_by(CowTagID))
+sp_data_pc <- left_join(sp_data_pc, danielle[,c("CowTagID", "LiveCoral")])
+sp_data_pc$Rusperlivecoral <- sp_data_pc$Porites.rus/sp_data_pc$LiveCoral
+sp_data_pc$Acutaperlivecoral <- sp_data_pc$Pocillopora.acuta/sp_data_pc$LiveCoral
+
+
+ggplot(sp_data_pc) +
+  geom_line(aes(y=Porites.rus, x = pc1), color = "blue") +
+  geom_line(aes(y=Pocillopora.acuta, x = pc1))
+
+ggplot(sp_data_pc) +
+  geom_line(aes(y=Rusperlivecoral, x = sd_TA), color = "blue") +
+  geom_line(aes(y=Acutaperlivecoral, x = sd_TA))
+```
+
+# quick make a table:
+```{r}
+ltm_table <- nut_no_seep[,c("CowTagID", pulse_columns)]
+
+# Select relevant columns and calculate summary statistics
+ltm_table_sum <- data.frame(
+  Variable = c("Phosphate_umolL", "Silicate_umolL", "NN_umolL", "NNP_umolL", "Salinity"),
+  Min = sapply(ltm_table[, c("Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Silicate_umolL", 
+                             "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_NNP_umolL",
+                             "Low_Tide_Mean_Salinity")], min, na.rm = TRUE),
+  Max = sapply(ltm_table[, c("Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Silicate_umolL", 
+                             "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_NNP_umolL",
+                             "Low_Tide_Mean_Salinity")], max, na.rm = TRUE),
+  Mean = sapply(ltm_table[, c("Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_Silicate_umolL", 
+                              "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_NNP_umolL",
+                              "Low_Tide_Mean_Salinity")], mean, na.rm = TRUE)
+)
+```
+
+```{r}
+sd_table <- nut_no_seep[,sd_columns]
+
+sd_table_sum <- data.frame(
+  Variable = c("Salinity", "Temperature", "Total Alkalinity", "pH"),
+  Min = sapply(sd_table[, c(sd_columns)], min, na.rm = TRUE),
+  Max = sapply(sd_table[, c(sd_columns)], max, na.rm = TRUE),
+  Mean = sapply(sd_table[, c(sd_columns)], mean, na.rm = TRUE)
+)
+```
+
