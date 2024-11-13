@@ -229,3 +229,55 @@ Summarized_chem_data_wet$Time <- "Wet"
 
 #write_csv(Summarized_chem_data, here("data","All_Nutrients_Processed_CV_Low.csv"))
 #write_csv(Summarized_chem_data_wet, here("data","Wet_Nutrients_Processed_CV_Low.csv"))
+ReducedChemData_noseep <- ReducedChemData[ReducedChemData$CowTagID != 'VSEEP',]
+ReducedChemData_seep <- ReducedChemData[ReducedChemData$CowTagID == 'VSEEP',]
+ReducedChemData_seep <- ReducedChemData_seep[ReducedChemData_seep$Tide == 'Low',]
+# Summarize the selected variables
+summary_stats <- ReducedChemData_seep %>%
+  summarize(
+    Mean_Silicate = mean(Silicate_umolL, na.rm = TRUE),
+    Max_Silicate = max(Silicate_umolL, na.rm = TRUE),
+    Min_Silicate = min(Silicate_umolL, na.rm = TRUE),
+    SD_Silicate = sd(Silicate_umolL, na.rm = TRUE),
+    
+    Mean_Salinity = mean(Salinity, na.rm = TRUE),
+    Max_Salinity = max(Salinity, na.rm = TRUE),
+    Min_Salinity = min(Salinity, na.rm = TRUE),
+    SD_Salinity = sd(Salinity, na.rm = TRUE),
+    
+    Mean_NN = mean(NN_umolL, na.rm = TRUE),
+    Max_NN = max(NN_umolL, na.rm = TRUE),
+    Min_NN = min(NN_umolL, na.rm = TRUE),
+    SD_NN = sd(NN_umolL, na.rm = TRUE),
+    
+    Mean_Phosphate = mean(Phosphate_umolL, na.rm = TRUE),
+    Max_Phosphate = max(Phosphate_umolL, na.rm = TRUE),
+    Min_Phosphate = min(Phosphate_umolL, na.rm = TRUE),
+    SD_Phosphate = sd(Phosphate_umolL, na.rm = TRUE),
+    
+    Mean_pH = mean(pH, na.rm = TRUE),
+    Max_pH = max(pH, na.rm = TRUE),
+    Min_pH = min(pH, na.rm = TRUE),
+    SD_pH = sd(pH, na.rm = TRUE),
+    
+    Mean_TA = mean(TA, na.rm = TRUE),
+    Max_TA = max(TA, na.rm = TRUE),
+    Min_TA = min(TA, na.rm = TRUE),
+    SD_TA = sd(TA, na.rm = TRUE),
+    
+    Mean_Temperature = mean(Temperature, na.rm = TRUE),
+    Max_Temperature = max(Temperature, na.rm = TRUE),
+    Min_Temperature = min(Temperature, na.rm = TRUE),
+    SD_Temperature = sd(Temperature, na.rm = TRUE)
+  )
+
+# Reshape the summary statistics dataframe
+summary_stats_long <- summary_stats %>%
+  pivot_longer(cols = everything(), names_to = "parameter", values_to = "value") %>%
+  separate(parameter, into = c("stat", "parameter"), sep = "_", extra = "merge") %>%
+  pivot_wider(names_from = "stat", values_from = "value")
+
+# View the reshaped summary statistics
+summary_stats_long
+
+summary_stats_long$Conf <- 1.96*(summary_stats_long$SD)

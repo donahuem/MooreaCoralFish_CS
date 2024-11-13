@@ -126,6 +126,34 @@ nut_no_seep$pc1 = pca$scores[,1] #what's this data's score on pc1 axis
 nut_no_seep$pc2 = pca$scores[,2] #what's this data's score on pc2 axis
 ```
 
+```{r FOR QGIS PLOTTING}
+## FOR MAKING QGIS MAPS, NEEDED TO CODE SOMEWHERE
+# map_data <- db[c("CowTagID", "lat", "lon","Location", "dist_to_seep_m")] %>%
+#   filter(Location == "Varari") %>%
+#   filter(grepl("^V", CowTagID)) %>%
+#   filter(!(CowTagID == "V13")) %>% #comment this out for coral
+#   filter(!(CowTagID == "V2")) %>%  #comment this out for coral
+#   mutate(dist_to_seep_m_temp = ifelse(dist_to_seep_m < 0, 10000, dist_to_seep_m)) %>%
+#   mutate(dist_to_seep_m_temp = ifelse(dist_to_seep_m_temp == 0, Inf, dist_to_seep_m_temp)) %>%
+#   arrange(dist_to_seep_m) %>%
+#   mutate(alphabetical = case_when(
+#     CowTagID == "VSEEP" ~ "SEEP",
+#     TRUE ~ toupper(letters[rank(dist_to_seep_m_temp)])
+#   )) %>%
+#   dplyr::select(-dist_to_seep_m_temp)
+# #
+# 
+# map_data_join <- fish_map_data %>%
+#   dplyr::filter(!(CowTagID == "VSEEP")) %>%
+#   mutate(Pin = sub("^V", "", CowTagID))%>%
+#   mutate(Pin = as.numeric(Pin))
+# 
+# maxn <- left_join(map_data_join[,c("Pin", "alphabetical")], maxn, by = join_by(Pin))
+# maxn$Pin <- maxn$alphabetical
+ alpha_mod <- left_join(alpha_cowtag_lat_long, nut_no_seep_scaled[,c("pc1", "CowTagID")]) %>% 
+  filter(!CowTagID =="VSEEP")
+# write_csv(alpha_mod, here("Data", "alpha_cowtag_lat_long_pc1.csv"))
+```
 
 Megan wants me to 'take the loadings onto pc1'
 make a "cheap map" that plots lat long and colors by pc1

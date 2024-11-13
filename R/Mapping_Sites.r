@@ -4,6 +4,7 @@
 ##### Created on: 10/22/2021 #####
 
 ##### LOAD LIBRARIES #####
+#install.packages("maptools", repos = "https://packagemanager.posit.co/cran/2023-10-13") # maptools removed from CRAN as of 11/2023
 library(here)
 library(readr)
 library(tidyverse)
@@ -139,7 +140,7 @@ V_krig_map<-function(datakrig=preds){
           axis.ticks=element_blank(),
           axis.title.x=element_blank(),
           axis.title.y=element_blank()) +
-    theme(panel.grid.major = element_line(color = 'white', linetype = "dashed",size = 0.5),
+    theme(panel.grid.major = linewidth(color = 'white', linetype = "dashed",size = 0.5),
           plot.background=element_rect(fill='white'))+
     ggtitle(glue("Varari: {.y}"))
   #   ggtitle(paste("Varari",DN, TD))

@@ -85,7 +85,7 @@ model_data <- left_join(response_data, nut_no_seep, by = join_by(CowTagID))
 ## Building a PCA
 ```{r}
 pulse_columns <- names(all_nut)[grepl("Low_Tide_Mean_", names(all_nut)) & 
-                                  !grepl("Temperature|pH|Ammonia_umol|TA",names(all_nut))]
+                            !grepl("Temperature|pH|Ammonia_umol|TA",names(all_nut))]
 nut_no_seep_scaled <- nut_no_seep %>%
   mutate(across(all_of(pulse_columns), scale))
 
@@ -110,22 +110,22 @@ biplot(pca)
 ```
 
 ```{r failed autoplot}
-pca_plot <- autoplot(pca, loadings = TRUE, loadings.colour = '#47c16e',
-                     loadings.label = TRUE, loadings.label.size = 3, loadings.label.colour = '#47c16e') +
-  labs(
-    title = "Principal Component Analysis of Nutrient Data",
-    x = "Principal Component 1 (72.249%)",
-    y = "Principal Component 2 (15.019%)"
-  ) +
-  xlim(-0.5,0.5)+
-#  scale_x_reverse(-0.5,0.5) +
-  theme_minimal(base_size = 15) +  # Clean theme
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),  # Center title
-    axis.title = element_text(size = 12)
-  )
-
-pca_plot
+# pca_plot <- autoplot(pca, loadings = TRUE, loadings.colour = '#47c16e',
+#                      loadings.label = TRUE, loadings.label.size = 3, loadings.label.colour = '#47c16e') +
+#   labs(
+#     title = "Principal Component Analysis of Nutrient Data",
+#     x = "Principal Component 1 (72.249%)",
+#     y = "Principal Component 2 (15.019%)"
+#   ) +
+#   xlim(-0.5,0.5)+
+# #  scale_x_reverse(-0.5,0.5) +
+#   theme_minimal(base_size = 15) +  # Clean theme
+#   theme(
+#     plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),  # Center title
+#     axis.title = element_text(size = 12)
+#   )
+# 
+# pca_plot
 #ggsave(pca_plot, filename = "PCA_Plot.png", dpi = 600, width = 7, height = 5)
 ```
 
