@@ -37,12 +37,12 @@ setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
 
 #explanatory data
 all_nut <- read.csv("data/All_Nutrients_Processed.csv")
-shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
-seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Plate_Distance_to_Seep.csv") %>% 
+# shore_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Shore_distance.csv") #using Danielle's
+seep_dist <- read.csv("https://raw.githubusercontent.com/dbarnas/Natural_environmental_gradients_alter_community_composition_and_functional_diversity_on_coral_reefs/refs/heads/main/Data/Plate_Distance_to_Seep.csv") %>% 
   filter(Location == "Varari")
-depth <- read.csv("https://raw.githubusercontent.com/njsilbiger/MooreaSGD_site-selection/main/Data/Adj_Sandwich_Depth.csv")
+depth <- read.csv("https://raw.githubusercontent.com/dbarnas/Natural_environmental_gradients_alter_community_composition_and_functional_diversity_on_coral_reefs/refs/heads/main/Data/Adj_Sandwich_Depth.csv")
 clod <- read.csv("data/Clod_Cards.csv")
-turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Biogeochem/August2021/Turb_NC.csv")
+turb <- read_csv("https://raw.githubusercontent.com/dbarnas/Natural_environmental_gradients_alter_community_composition_and_functional_diversity_on_coral_reefs/refs/heads/main/Data/Biogeochem/Turb_NC.csv")
 
 #Response data
 response_data <- read.csv("data/response_data.csv")
@@ -76,7 +76,7 @@ SI_Zoop <- read.csv("data/SI_Zoop.csv")%>%
 ```{r}
 nut_no_seep <- all_nut[all_nut$CowTagID != 'VSEEP',]
 nut_no_seep <- left_join(nut_no_seep, seep_dist[,c("CowTagID", "lat", "lon", "dist_to_seep_m")], by = join_by(CowTagID))
-nut_no_seep <- left_join(nut_no_seep, shore_dist[,c("CowTagID", "shore_dist_m")], by = join_by(CowTagID))
+# nut_no_seep <- left_join(nut_no_seep, shore_dist[,c("CowTagID", "shore_dist_m")], by = join_by(CowTagID))
 ```
 
 ```{r model data}
@@ -111,18 +111,43 @@ biplot(pca)
 ```
 
 ```{r autoplot}
-pca_plot <- autoplot(pca, loadings = TRUE, loadings.colour = '#47c16e',
-                      loadings.label = TRUE, loadings.label.size = 3, loadings.label.colour = '#47c16e') +
- labs(
+# pca_plot <- autoplot(pca, loadings = TRUE, loadings.colour = '#47c16e',
+#                       loadings.label = TRUE, loadings.label.size = 3, loadings.label.colour = '#47c16e') +
+#  labs(
+#     title = "Principal Component Analysis of Nutrient Data",
+#     x = "Principal Component 1 (72.249%)",
+#     y = "Principal Component 2 (15.019%)"
+#   ) +
+#   xlim(-2.5,4)+
+# #  scale_x_reverse(-0.5,0.5) +
+#   theme_minimal(base_size = 15) +  # Clean theme
+#   theme(
+#     plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),  # Center title
+#     axis.title = element_text(size = 12)
+#   )
+# 
+# pca_plot
+#ggsave(pca_plot, filename = "PCA_Plot.png", dpi = 600, width = 7, height = 5)
+```
+
+```{r}
+scores <- as.data.frame(pca$scores)
+loadings <- as.data.frame(pca$loadings[, 1:2])  # First two components
+
+pca_plot <- ggplot(scores, aes(x = Comp.1, y = Comp.2)) +
+  geom_point() +
+  geom_segment(data = loadings, aes(x = 0, y = 0, xend = 3*Comp.1, yend = 3*Comp.2),
+               arrow = arrow(length = unit(0.2, "cm")), color = '#47c16e') +
+  geom_text(data = loadings, aes(x = 3*Comp.1, y = 3*Comp.2, label = rownames(loadings)),
+            color = '#47c16e', hjust = -0.2) +
+  labs(
     title = "Principal Component Analysis of Nutrient Data",
-    x = "Principal Component 1 (72.249%)",
-    y = "Principal Component 2 (15.019%)"
+    x = "Principal Component 1",
+    y = "Principal Component 2"
   ) +
-  xlim(-0.5,0.5)+
-#  scale_x_reverse(-0.5,0.5) +
-  theme_minimal(base_size = 15) +  # Clean theme
+  theme_minimal(base_size = 15) +
   theme(
-    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),  # Center title
+    plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
     axis.title = element_text(size = 12)
   )
 
@@ -130,11 +155,14 @@ pca_plot
 #ggsave(pca_plot, filename = "PCA_Plot.png", dpi = 600, width = 7, height = 5)
 ```
 
+
 ```{r}
 pulse_df <- as.data.frame(lapply(nut_no_seep_scaled[, c(pulse_columns)], as.numeric))
 cor_matrix <- cor(pulse_df)
 corrplot(cor_matrix, method = "number")
 chart.Correlation(pulse_df)
+
+chart.Correlation(nut_no_seep[,c(sd_columns)])
 ```
 
 
@@ -727,22 +755,37 @@ coef(lasso_PAC_growth)
 ```
 
 #### Significant model
-
 ```{r}
-multivariate_PAC_growth <- lmer(Percent_Change ~ sd_Temperature + sd_TA + sd_pH + 
+multivariate_PAC_growth <- lmer(Percent_Change ~ (sd_Temperature) + (sd_TA) + (sd_pH) + 
   (1 | Genotype) + (1 | Cage_Uncaged),
   data = PAC_model_data
 )
 summary(multivariate_PAC_growth)
 car::Anova(multivariate_PAC_growth)
 plot(allEffects(multivariate_PAC_growth))
+```
+
+```{r}
+# multivariate_PAC_growth <- lmer(Percent_Change ~ scale(sd_Temperature) + scale(sd_TA) + scale(sd_pH) + 
+#   (1 | Genotype) + (1 | Cage_Uncaged),
+#   data = PAC_model_data
+# )
+# summary(multivariate_PAC_growth)
+# car::Anova(multivariate_PAC_growth)
+# plot(allEffects(multivariate_PAC_growth))
 
 #check_model(multivariate_PAC_growth)
 ```
+```{r}
+null_model <- lmer(Percent_Change ~ (1 | Genotype) + (1 | Cage_Uncaged), data = PAC_model_data)
+anova(null_model, multivariate_PAC_growth)
+```
+
 
 ##### Sig model plot
 ```{r}
-pred_temp1 <- ggpredict(multivariate_PAC_growth, terms = "sd_Temperature")
+library(ggeffects)
+pred_temp <- ggpredict(multivariate_PAC_growth, terms = "sd_Temperature")
 pred_ta <- ggpredict(multivariate_PAC_growth, terms = "sd_TA")
 pred_ph <- ggpredict(multivariate_PAC_growth, terms = "sd_pH")
 
@@ -830,7 +873,7 @@ combined_plot <- ggarrange(plot_temp +
   theme(plot.title = element_text(hjust = 0.5, size = 12),
         plot.margin = margin(t = 20, r = 20, b = 20, l = 40))
 combined_plot
-ggsave(combined_plot, filename = "PAC_Percent_Change_Effects.png", dpi = 600, width = 10, height = 5)
+#ggsave(combined_plot, filename = "PAC_Percent_Change_Effects.png", dpi = 600, width = 10, height = 5)
 ```
 
 ### PRU

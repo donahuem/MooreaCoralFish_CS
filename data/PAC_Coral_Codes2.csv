@@ -1,0 +1,70 @@
+Placement_Code,Cage_Uncaged,Pin_Number,Metabolomics_Vial,Microbiome_Vial,Slurry_Label,Genotype,Species
+PAC V01 A,A,01,NA,NA,NA,PA22,Pocillopora_acuta
+PAC V01 B,B,01,NA,NA,NA,PA22,Pocillopora_acuta
+PAC V01 C,C,01,PAC 02,PAC 02,PAC 02,PA22,Pocillopora_acuta
+PAC V02 C,C,02,PAC 04,PAC 04,PAC 04,PA21,Pocillopora_acuta
+PAC V02 B,B,02,PAC 05,PAC 05,PAC 05,PA21,Pocillopora_acuta
+PAC V02 A,A,02,PAC 06,PAC 06,PAC 06,PA21,Pocillopora_acuta
+PAC V03 C,C,03,PAC 07,PAC 07,PAC 07,PA11,Pocillopora_acuta
+PAC V03 B,B,03,PAC 08,PAC 08,PAC 08,PA11,Pocillopora_acuta
+PAC V03 A,A,03,PAC 09,PAC 09,PAC 09,PA11,Pocillopora_acuta
+PAC V16 C,C,16,PAC 10,PAC 10,PAC 10,PA22,Pocillopora_acuta
+PAC V16 B,B,16,PAC 11,PAC 11,PAC 11,PA22,Pocillopora_acuta
+PAC V16 A,A,16,PAC 12,PAC 12,PAC 12,PA22,Pocillopora_acuta
+PAC V04 C,C,04,PAC 13,PAC 13,PAC 13,PA11,Pocillopora_acuta
+PAC V04 B,B,04,PAC 14,PAC 14,PAC 14,PA11,Pocillopora_acuta
+PAC V04 A,A,04,PAC 15,PAC 15,PAC 15,PA11,Pocillopora_acuta
+PAC V05 C,C,05,PAC 16,PAC 16,PAC 16,PA19,Pocillopora_acuta
+PAC V05 B,B,05,PAC 17,PAC 17,PAC 17,PA19,Pocillopora_acuta
+PAC V05 A,A,05,PAC 18,PAC 18,PAC 18,PA19,Pocillopora_acuta
+PAC V15 C,C,15,PAC 19,PAC 19,PAC 19,PA13,Pocillopora_acuta
+PAC V15 B,B,15,PAC 20,PAC 20,PAC 20,PA13,Pocillopora_acuta
+PAC V15 A,A,15,PAC 21,PAC 21,PAC 21,PA13,Pocillopora_acuta
+PAC V06 C,C,06,PAC 22,PAC 22,PAC 22,PA19,Pocillopora_acuta
+PAC V06 B,B,06,PAC 23,PAC 23,PAC 23,PA19,Pocillopora_acuta
+PAC V06 A,A,06,PAC 24,PAC 24,PAC 24,PA19,Pocillopora_acuta
+PAC V07 C,C,07,PAC 25,PAC 25,PAC 25,PA21,Pocillopora_acuta
+PAC V07 B,B,07,PAC 26,PAC 26,PAC 26,PA21,Pocillopora_acuta
+PAC V07 A,A,07,PAC 27,PAC 27,PAC 27,PA21,Pocillopora_acuta
+PAC V11 C,C,11,PAC 28,PAC 28,PAC 28,PA21,Pocillopora_acuta
+PAC V11 B,B,11,PAC 29,PAC 29,PAC 29,PA21,Pocillopora_acuta
+PAC V11 A,A,11,PAC 30,PAC 30,PAC 30,PA21,Pocillopora_acuta
+PAC V12 C,C,12,PAC 31,PAC 31,PAC 31,PA19,Pocillopora_acuta
+PAC V12 B,B,12,PAC 32,PAC 32,PAC 32,PA19,Pocillopora_acuta
+PAC V12 A,A,12,PAC 33,PAC 33,PAC 33,PA19,Pocillopora_acuta
+PAC V08 C,C,08,PAC 34,PAC 34,PAC 34,PA18,Pocillopora_acuta
+PAC V08 B,B,08,PAC 35,PAC 35,PAC 35,PA18,Pocillopora_acuta
+PAC V08 A,A,08,PAC 36,PAC 36,PAC 36,PA18,Pocillopora_acuta
+PAC V18 C,C,18,PAC 37,PAC 37,PAC 37,PA11,Pocillopora_acuta
+PAC V18 B,B,18,PAC 38,PAC 38,PAC 38,PA11,Pocillopora_acuta
+PAC V18 A,A,18,PAC 39,PAC 39,PAC 39,PA11,Pocillopora_acuta
+PAC V10 C,C,10,PAC 40,PAC 40,PAC 40,PA18,Pocillopora_acuta
+PAC V10 B,B,10,PAC 41,PAC 41,PAC 41,PA18,Pocillopora_acuta
+PAC V10 A,A,10,PAC 42,PAC 42,PAC 42,PA18,Pocillopora_acuta
+PAC V09 C,C,09,PAC 43,PAC 43,PAC 43,PA13,Pocillopora_acuta
+PAC V09 B,B,09,PAC 44,PAC 44,PAC 44,PA13,Pocillopora_acuta
+PAC V09 A,A,09,PAC 45,PAC 45,PAC 45,PA13,Pocillopora_acuta
+PAC V19 C,C,19,PAC 46,PAC 46,PAC 46,PA18,Pocillopora_acuta
+PAC V19 B,B,19,PAC 47,PAC 47,PAC 47,PA18,Pocillopora_acuta
+PAC V19 A,A,19,PAC 48,PAC 48,PAC 48,PA18,Pocillopora_acuta
+PAC V17 C,C,17,PAC 49,PAC 49,PAC 49,PA22,Pocillopora_acuta
+PAC V17 B,B,17,PAC 50,PAC 50,PAC 50,PA22,Pocillopora_acuta
+PAC V17 A,A,17,PAC 51,ALG TIL 07,PAC 51,PA22,Pocillopora_acuta
+PAC V20 C,C,20,PAC 52,PAC 52,PAC 52,PA13,Pocillopora_acuta
+PAC V20 B,B,20,PAC 53,PAC 53,PAC 53,PA13,Pocillopora_acuta
+PAC V20 A,A,20,PAC 54,PAC 54,PAC 54,PA13,Pocillopora_acuta
+PAC V14 C,C,14,PAC 55,PAC 55,PAC 55,PA18,Pocillopora_acuta
+PAC V14 B,B,14,PAC 56,PAC 56,PAC 56,PA18,Pocillopora_acuta
+PAC V14 A,A,14,PAC 57,PAC 57,PAC 57,PA18,Pocillopora_acuta
+PAC V13 A,A,13,PAC 58,PAC 58,PAC 58,PA22,Pocillopora_acuta
+PAC V13 B,B,13,PAC 59,PAC 59,PAC 59,PA22,Pocillopora_acuta
+PAC V13 C,C,13,PAC 60,PAC 60,PAC 60,PA22,Pocillopora_acuta
+T0,T0,0,PA18,PA18,PA18,PA18,Pocillopora_acuta
+T0,T0,0,PA11,PA11,PA11,PA11,Pocillopora_acuta
+T0,T0,0,PA19,PA19,PA19,PA19,Pocillopora_acuta
+T0,T0,0,PA20,PA20,PA20,PA20,Pocillopora_acuta
+T0,T0,0,PA13,PA13,PA13,PA13,Pocillopora_acuta
+T0,T0,0,PA10,PA10,PA10,PA10,Pocillopora_acuta
+T0,T0,0,PA21,PA21,PA21,PA21,Pocillopora_acuta
+T0,T0,0,PA22,PA22,PA22,PA22,Pocillopora_acuta
+T0,T0,0,PR77,PR77,PR77,PR77,Pocillopora_acuta

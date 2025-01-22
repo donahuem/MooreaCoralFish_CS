@@ -8,6 +8,7 @@ TLE <- read.csv("data/TLE_summary.csv")
 FCM <- read.csv("data/FCM_tidy.csv") %>% 
   rename(Placement_Code = PLACEMENT)
 SI <- read.csv("data/SI_Tidy.csv")
+chl <- read.csv("data/Chl_concentrations.csv") 
 
 SI_join <- SI[,c("HS","δ15N", "δ13C", "Placement_Code","Pin_Number", "Cage_Uncaged", "Genotype", "Species", "CowTagID", "Δ15N", "Δ13C", "C_N_ratio","δ15N_T1_T0", "δ13C_T1_T0", "Δ15N_T1T0","Δ13C_T1T0")] %>%
   pivot_wider(names_from = HS, values_from = c("δ15N", "δ13C", "C_N_ratio","δ15N_T1_T0", "δ13C_T1_T0", "Δ15N_T1T0","Δ13C_T1T0"), names_sep = "_")
@@ -16,7 +17,7 @@ SI_join <- SI[,c("HS","δ15N", "δ13C", "Placement_Code","Pin_Number", "Cage_Unc
 meta <- read.csv("data/coral_metadata.csv")
 
 #make a master response variable data sheet
-response_data <- left_join(meta[,c(2:4,7,8)], BW[,c(2,4,5,6)], by = join_by(Placement_Code)) %>% 
+response_data <- left_join(meta, BW[,c(2,4,5,6)], by = join_by(Placement_Code)) %>% 
   #select(!X) %>% #check that this doesn't need to be here
   left_join(FCM[,c(1,16,17)], by = join_by(Placement_Code)) %>% 
   left_join(TLE[,c(3:7)], by = join_by(Placement_Code)) %>% 

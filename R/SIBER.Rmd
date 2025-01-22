@@ -23,7 +23,8 @@ graphics.off()
 
 # Load your data
 #SI <- read.csv("../data/SI_Tidy.csv")
-SI <- read.csv("data/SI_Tidy.csv")
+SI <- read.csv("data/SI_Tidy.csv") #%>% 
+#  filter(Placement_Code != "T0")
 demo.siber.data <- SI[, c("δ13C", "δ15N", "HS", "Species")]
 
 rus.siber.data <- demo.siber.data %>% 
@@ -189,7 +190,7 @@ Credible intervals can be extracted by calling the function hdr from the hdrcde 
 ```{r}
 # The posterior estimates of the ellipses for each group can be used to
 # calculate the SEA.B for each group.
-SEA.B <- siberEllipses(ellipses.posterior)
+SEA.B <- siberEllipses(rus.ellipses.posterior)
 
 siberDensityPlot(SEA.B, xticklabels = colnames(group.ML), 
                 xlab = c("Community | Group"),
