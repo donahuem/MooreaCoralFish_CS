@@ -1,4 +1,5 @@
 #From Nyssa Silbiger - CS did NOT write this code.
+#https://github.com/njsilbiger/MooreaSGD_site-selection/blob/main/Scripts/ADCP_windrose.R
 #https://stackoverflow.com/questions/17266780/wind-rose-with-ggplot-r
 
 require(ggplot2)
@@ -45,12 +46,12 @@ plot.windrose <- function(data,
   }
   # get some information about the number of bins, etc.
   n.spd.seq <- length(spdseq)
-  n.colors.in.range <- n.spd.seq - 1
+  n.colors.in.range <- n.spd.seq - 1 #CS removed minus one and didn't help :(
   
   # create the color map
   spd.colors <- colorRampPalette(brewer.pal(min(max(3,
                                                     n.colors.in.range),
-                                                min(9,
+                                                min(9, #CS tried changing from 9 to 10
                                                     n.colors.in.range)),                                               
                                             palette))(n.colors.in.range)
   
@@ -102,7 +103,7 @@ plot.windrose <- function(data,
   
   # deal with change in ordering introduced somewhere around version 2.2
   if(packageVersion("ggplot2") > "2.2"){    
-    cat("Hadley broke my code\n")
+    cat("Your ggplot is newer than 2.2 and might have issues ordering colors")
     data$spd.binned = with(data, factor(spd.binned, levels = rev(levels(spd.binned))))
     spd.colors = rev(spd.colors)
   }
@@ -119,7 +120,7 @@ plot.windrose <- function(data,
                       values = spd.colors,
                       drop = FALSE) +
     theme(axis.title.x = element_blank()) +
-            theme(legend.position="none")
+    theme(legend.position="none")
   
   # adjust axes if required
   if (!is.na(countmax)){
