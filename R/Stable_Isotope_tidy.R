@@ -18,17 +18,18 @@ SI$δ13C <- SI$δ13C............vs..VPDB
 SI_cleaner <- SI[SI$Sample.ID != "", ]
 
 SI_cleaner <- SI_cleaner %>%
-  rename(`Micro_Vial` = Sample.ID)
+  rename(Microbiome_Vial = Sample.ID)
 
-SI_meta <- left_join(SI_cleaner, meta, by = join_by(Micro_Vial))
-SI_meta$Genotype[is.na(SI_meta$Genotype)] <- SI_meta$Micro_Vial[is.na(SI_meta$Genotype)]
+SI_meta <- left_join(SI_cleaner, meta, by = join_by(Microbiome_Vial))
+SI_meta$Genotype[is.na(SI_meta$Genotype)] <- SI_meta$Microbiome_Vial[is.na(SI_meta$Genotype)]
 
 #Change TO Pin_Number Placement Code
 SI_meta$Pin_Number <- ifelse(is.na(SI_meta$Pin_Number), "T0", SI_meta$Pin_Number)
 SI_meta$Placement_Code <- ifelse(is.na(SI_meta$Placement_Code), "T0", SI_meta$Placement_Code)
 
 #Make CowTagID
-SI_meta$CowTagID <- ifelse(SI_meta$Pin_Number != "T0", paste0("V", SI_meta$Pin_Number), SI_meta$Pin_Number)
+SI_meta$CowTagID <- ifelse(SI_meta$Pin_Number == "0", "T0", paste0("V", SI_meta$Pin_Number))
+SI_meta$CowTagID <- ifelse(SI_meta$CowTagID == "VT0", "T0", paste0(SI_meta$CowTagID))
 
 # Changing the Species column for T0
 SI_meta$Species <- ifelse(is.na(SI_meta$Species) & substr(SI_meta$Genotype, 2, 2) == "A", "Pocillopora acuta",
@@ -36,13 +37,13 @@ SI_meta$Species <- ifelse(is.na(SI_meta$Species) & substr(SI_meta$Genotype, 2, 2
                             SI_meta$Species))
 
 #Calculate "Δ15N"
-SI_meta_Δ_calc <- SI_meta[,c("Micro_Vial", "HS",  "δ15N","δ13C" )] %>%
+SI_meta_Δ_calc <- SI_meta[,c("Microbiome_Vial", "HS",  "δ15N","δ13C" )] %>%
   pivot_wider(names_from = HS, values_from = c("δ15N", "δ13C"), names_sep = "_")
 
 SI_meta_Δ_calc$Δ15N <- SI_meta_Δ_calc$δ15N_host - SI_meta_Δ_calc$δ15N_symb
 SI_meta_Δ_calc$Δ13C <- SI_meta_Δ_calc$δ13C_host - SI_meta_Δ_calc$δ13C_symb
 
-SI_meta <- left_join(SI_meta, SI_meta_Δ_calc[,c("Micro_Vial", "Δ15N","Δ13C")])
+SI_meta <- left_join(SI_meta, SI_meta_Δ_calc[,c("Microbiome_Vial", "Δ15N","Δ13C")])
 
 SI_meta$C_N_ratio <- SI_meta$μg.C / SI_meta$μg.N
 SI_meta$Percent_N <- ((SI_meta$μg.N* 0.001) /(SI_meta$Weight..mg.)) * 100
@@ -51,12 +52,12 @@ SI_meta$Percent_C <- ((SI_meta$μg.C* 0.001) /(SI_meta$Weight..mg.)) * 100
 #Make T0 dataframe so we can make T1-T0
 # Assuming SI_meta is your initial dataframe
 host_df_T0 <- SI_meta %>%
-  filter(Pin_Number == "T0") %>% 
+  filter(CowTagID == "T0") %>% 
   filter(HS == "host") %>%
   dplyr::select(Genotype, δ15N_T0 = δ15N, δ13C_T0 = δ13C)
 
 symb_df_T0 <- SI_meta %>%
-  filter(Pin_Number == "T0") %>% 
+  filter(CowTagID == "T0") %>% 
   filter(HS == "symb")%>%
   dplyr::select(Genotype, δ15N_T0 = δ15N, δ13C_T0 = δ13C)
 
@@ -76,13 +77,13 @@ SI_meta <- rbind(host_df, symb_df)
 
 #now re-doing the ∆ calculations with this in mind
 #this is then how much it shifted on the gradient from the colony 'baseline' amount of heterotrophy / autotrophy
-SI_meta_Δ_calc <- SI_meta[,c("Micro_Vial", "HS",  "δ15N_T1_T0","δ13C_T1_T0" )] %>%
+SI_meta_Δ_calc <- SI_meta[,c("Microbiome_Vial", "HS",  "δ15N_T1_T0","δ13C_T1_T0" )] %>%
   pivot_wider(names_from = HS, values_from = c("δ15N_T1_T0", "δ13C_T1_T0"), names_sep = "_")
 
 SI_meta_Δ_calc$Δ15N_T1T0 <- SI_meta_Δ_calc$δ15N_T1_T0_host - SI_meta_Δ_calc$δ15N_T1_T0_symb
 SI_meta_Δ_calc$Δ13C_T1T0 <- SI_meta_Δ_calc$δ13C_T1_T0_host - SI_meta_Δ_calc$δ13C_T1_T0_symb
 
-SI_meta <- left_join(SI_meta, SI_meta_Δ_calc[,c("Micro_Vial", "Δ15N_T1T0","Δ13C_T1T0")])
+SI_meta <- left_join(SI_meta, SI_meta_Δ_calc[,c("Microbiome_Vial", "Δ15N_T1T0","Δ13C_T1T0")])
 
 #Percent N just because
 SI_meta$Percent_N15 <- SI_meta$δ15N...........vs..AIR./SI_meta$μg.N * 100

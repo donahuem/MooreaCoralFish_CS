@@ -40,15 +40,15 @@ duplicates <- merged_FCM %>%
 FCM_data <- merged_FCM[,c(1,2,6,7,13,17,21)]
 
 
-PAC <- read.csv("data/PAC_Coral_Codes.csv")%>% 
-  dplyr::select(!X) %>% 
-  dplyr::select(!X.1) %>% 
-  rename("PLACEMENT" = "Placement_Code")
+PAC <- read.csv("data/PAC_Coral_Codes2.csv") %>% 
+  # dplyr::select(!X) %>% 
+  # dplyr::select(!X.1) %>% 
+   rename("PLACEMENT" = "Placement_Code")
 PRU <- read.csv("data/PRU_Coral_Codes.csv")%>% 
   rename("PLACEMENT" = "Placement_Code") %>% 
   dplyr::select(!X)
 
-codes <- rbind(PAC[,c(2,3,4,7,8)],PRU[,c(2,3,4,7,8)])
+codes <- rbind(PAC[,c(1,3,2,7,8)],PRU[,c(2,3,4,7,8)]) #had to edit with new codes
 
 FCM <- left_join(FCM_data, codes)
 FCM$Cage_Uncaged <- as.factor(FCM$Cage_Uncaged)
@@ -62,7 +62,6 @@ FCM$sym_FSC.Events <- as.numeric(FCM$sym_FSC.Events)
 #GREAT! Now we have the number of cells in each sample
 
 ####adding a new row for the one good sample on 6/7/24
-# Assuming 'FCM' is your DataFrame and the columns are already named as shown
 new_row <- data.frame(
   PLACEMENT = "PAC 056 2",
   SLURRY.LABEL = "Second_Run_PAC_056",                           # Adjust the values as necessary

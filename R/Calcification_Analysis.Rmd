@@ -1,0 +1,564 @@
+---
+title: "Calcification_Analysis"
+author: "Callie Stephenson"
+date: "2024-12-04"
+output: html_document
+---
+# Setup
+```{r}
+library(dplyr)
+library(ggplot2)
+library(glmnet)
+library(effects)
+library(ggeffects)
+library(performance)
+library(ggpubr)
+library(lmerTest)
+```
+
+
+```{r}
+response_data <- read.csv("data/T1_response_data.csv")
+explanatory_variables <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/explanatory_all_wide.csv")
+```
+
+```{r}
+model_data <- left_join(response_data, explanatory_variables, by = join_by(CowTagID))
+
+PAC_model_data <- model_data %>%
+  filter(Species == "Pocillopora acuta", !is.na(Pin_Number))
+
+PRU_model_data <- model_data %>%
+  filter(Species == "Porites rus", !is.na(Pin_Number))
+
+PRU_model_data_caged_only <- PRU_model_data %>% 
+  filter(Cage_Uncaged == "C")
+```
+
+## Collinearity
+```{r}
+chart.Correlation(na.omit(model_data[,c("sd_Salinity","sd_Temperature", "sd_TA", "sd_pH")]))
+```
+
+```{r}
+chart.Correlation(na.omit(model_data[,c("sd_Salinity","sd_Temperature", "sd_pH")]))
+```
+
+Temperature variability, salinity variability, and pH variability are all significantly corrleated, but TA is not
+
+
+Still, a PCA is not appropriate:
+```{r}
+sd_columns <- names(explanatory_variables)[grepl("sd_", names(explanatory_variables)) & 
+                          !grepl("Phosphate_umolL|NN_umolL|Ammonia_umolL|NNP_umolL|Silicate_umolL",names(explanatory_variables))]
+sd.pca.data <- na.omit(explanatory_variables[, c(sd_columns)])
+sd.pca = princomp(sd.pca.data, cor=TRUE)
+summary(sd.pca)
+```
+
+Therefore, we will use the LASSO method, which can do variable selection with shrinkage
+
+# Lasso
+## Growth
+
+### P acuta
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_TA +
+                                  (1|Genotype), data = PAC_model_data)
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+AIC(linear_growth_model_pac)
+
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_pH +
+                                  (1|Genotype), data = PAC_model_data)
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+AIC(linear_growth_model_pac)
+
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_pH + sd_TA +
+                                  (1|Genotype), data = PAC_model_data)
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+AIC(linear_growth_model_pac)
+```
+
+
+```{r PAC lasso}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Percent_Change","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  mutate(sd_TA = scale(sd_TA))%>% 
+  mutate(sd_pH = scale(sd_pH))%>% 
+  mutate(sd_Salinity = scale(sd_Salinity))%>% 
+  mutate(sd_Temperature = scale(sd_Temperature))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+PAC_lasso$Cage_Uncaged <- as.factor(PAC_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_percent_change <- PAC_model_data_matrix[, -1]
+y_pac_percent_change <- PAC_model_data_matrix[, 1]
+lasso_PAC_growth <- cv.glmnet(x = x_pac_percent_change, y = y_pac_percent_change)
+coef(lasso_PAC_growth)
+```
+
+#### Significant model
+```{r}
+multivariate_PAC_growth <- lmer(Percent_Change ~ (sd_Temperature) + (sd_TA) + (sd_pH) + 
+  (1 | Genotype) + (1 | Cage_Uncaged),
+  data = PAC_model_data
+)
+summary(multivariate_PAC_growth)
+car::Anova(multivariate_PAC_growth)
+plot(allEffects(multivariate_PAC_growth))
+anova(multivariate_PAC_growth)
+```
+
+```{r}
+multivariate_PAC_growth <- lmer(Percent_Change ~ scale(sd_Temperature) + scale(sd_TA) + scale(sd_pH) + 
+  (1 | Genotype) + (1 | Cage_Uncaged),
+  data = PAC_model_data
+)
+```
+
+```{r}
+# multivariate_PAC_growth <- lmer(Percent_Change ~ scale(sd_Temperature) + scale(sd_TA) + scale(sd_pH) + 
+#   (1 | Genotype) + (1 | Cage_Uncaged),
+#   data = PAC_model_data
+# )
+# summary(multivariate_PAC_growth)
+# car::Anova(multivariate_PAC_growth)
+# plot(allEffects(multivariate_PAC_growth))
+
+#check_model(multivariate_PAC_growth)
+```
+
+```{r}
+null_model <- lmer(Percent_Change ~ (1 | Genotype) + (1 | Cage_Uncaged), data = PAC_model_data)
+anova(null_model, multivariate_PAC_growth)
+```
+
+
+##### Sig model plot
+```{r}
+pred_temp <- ggpredict(multivariate_PAC_growth, terms = "sd_Temperature")
+pred_ta <- ggpredict(multivariate_PAC_growth, terms = "sd_TA")
+pred_ph <- ggpredict(multivariate_PAC_growth, terms = "sd_pH")
+
+#annnotations
+anova_results <- car::Anova(multivariate_PAC_growth)
+p_values <- anova_results$`Pr(>Chisq)`[1:3]  # Adjust index based on your model's fixed effects
+names(p_values) <- rownames(anova_results)[1:3] 
+```
+
+```{r}
+custom_theme <- theme_minimal(base_size = 10)+
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10)
+  )
+```
+
+```{r}
+# Plot for sd_Temperature
+plot_temp <- ggplot() +
+  # Raw data points
+  geom_point(data = PAC_model_data, 
+             aes(x = sd_Temperature, y = Percent_Change), color = "grey50", alpha = 0.6) +
+  # Prediction line with confidence interval
+  geom_line(data = pred_temp, aes(x = x, y = predicted), color = "#21908c") +
+  geom_ribbon(data = pred_temp, aes(x = x, ymin = conf.low, ymax = conf.high), 
+              fill = "#21908c", alpha = 0.2) +
+  scale_y_continuous(limits = c(-1.5,25)) +
+  labs(
+    x = "Standard Deviation of Temperature",
+    y = "Percent Change in Buoyant Weight"
+  ) +
+  custom_theme+
+  annotate("text", y = 1, x = max(pred_temp$x, na.rm=TRUE), 
+           label = paste("p =", round(p_values["sd_Temperature"], 6)), 
+           hjust = 1.1, vjust = 1, size = 3)
+
+# Plot for sd_TA
+plot_ta <- ggplot() +
+  geom_point(data = PAC_model_data, 
+             aes(x = sd_TA, y = Percent_Change), color = "grey50", alpha = 0.6) +
+  geom_line(data = pred_ta, aes(x = x, y = predicted), color = "#21908c") +
+  geom_ribbon(data = pred_ta, aes(x = x, ymin = conf.low, ymax = conf.high), 
+              fill = "#21908c", alpha = 0.2) +
+  scale_y_continuous(limits = c(-1.5,25)) +
+  labs(
+    x = "Standard Deviation of TA", y = " "
+  ) +
+  custom_theme+
+  annotate("text", y = 1, x =max(pred_ta$x, na.rm=TRUE), 
+           label = paste("p =", round(p_values["sd_TA"], 6)), 
+           hjust = 1.1, vjust = 1, size = 3)
+
+# Plot for sd_pH
+plot_ph <- ggplot() +
+  geom_point(data = PAC_model_data, 
+             aes(x = sd_pH, y = Percent_Change), color = "grey50", alpha = 0.6) +
+  geom_line(data = pred_ph, aes(x = x, y = predicted), color = "#21908c") +
+  geom_ribbon(data = pred_ph, aes(x = x, ymin = conf.low, ymax = conf.high), 
+              fill = "#21908c", alpha = 0.2) +
+  scale_y_continuous(limits = c(-1.5,25)) +
+  labs(
+    x = "Standard Deviation of pH", y = " "
+  ) +
+  custom_theme+
+  annotate("text", y = 1, x =max(pred_ph$x, na.rm=TRUE), 
+           label = paste("p =", round(p_values["sd_pH"], 9)), 
+           hjust = 1.1, vjust = 1, size = 3)
+```
+
+```{r}
+combined_plot <- ggarrange(plot_temp + 
+                              labs(subtitle = "A") + 
+                              theme(plot.subtitle = element_text(hjust = -0.2, size = 12)),
+                            plot_ta + 
+                              labs(subtitle = "B") + 
+                              theme(plot.subtitle = element_text(hjust = -0.2, size = 12)),
+                            plot_ph + 
+                              labs(subtitle = "C") + 
+                              theme(plot.subtitle = element_text(hjust = -0.2, size = 12)),
+                            nrow = 1)+ 
+  ggtitle(expression("Effects of Variability on Growth in" ~ italic("Pocillopora acuta"))) +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        plot.margin = margin(t = 20, r = 20, b = 20, l = 40))
+combined_plot
+#ggsave(combined_plot, filename = "PAC_Percent_Change_Effects.png", dpi = 600, width = 10, height = 5)
+```
+
+### Porites rus
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Percent_Change","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+PRU_lasso$Cage_Uncaged <- as.factor(PRU_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_percent_change <- PRU_model_data_matrix[, -1]
+y_PRU_percent_change <- PRU_model_data_matrix[, 1]
+lasso_PRU_growth <- cv.glmnet(x = x_PRU_percent_change, y = y_PRU_percent_change)
+coef(lasso_PRU_growth)
+```
+
+### Caged Only Porites rus
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso_c <- PRU_model_data_caged_only[,c("Percent_Change","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso_c$Genotype <- as.factor(PRU_lasso_c$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso_c)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso_c <- cbind(PRU_lasso_c, genotype_dummies)
+PRU_lasso_c <- PRU_lasso_c %>% dplyr::select(-Genotype)
+
+#lasso works on matrix
+PRU_model_data_matrix_c <- as.matrix(PRU_lasso_c)
+
+x_PRU_percent_change_c <- PRU_model_data_matrix_c[, -1]
+y_PRU_percent_change_c <- PRU_model_data_matrix_c[, 1]
+lasso_PRU_growth_c <- cv.glmnet(x = x_PRU_percent_change_c, y = y_PRU_percent_change_c)
+coef(lasso_PRU_growth_c)
+```
+
+## Symb Abundance
+
+### P acuta
+```{r}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("FSC.Events_per_cm_2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+PAC_lasso <- PAC_lasso %>% 
+  mutate(FSC.Events_per_cm_2 = log10(FSC.Events_per_cm_2)) 
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+PAC_lasso$Cage_Uncaged <- as.factor(PAC_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_symb <- PAC_model_data_matrix[, -1]
+y_pac_symb <- PAC_model_data_matrix[, 1]
+lasso_PAC_symb <- cv.glmnet(x = x_pac_symb, y = y_pac_symb)
+coef(lasso_PAC_symb)
+```
+
+### Porites rus
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("FSC.Events_per_cm_2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+PRU_lasso <- PRU_lasso %>% 
+  mutate(FSC.Events_per_cm_2 = log10(FSC.Events_per_cm_2)) %>% 
+  filter(!is.na(FSC.Events_per_cm_2))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+PRU_lasso$Cage_Uncaged <- as.factor(PRU_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_symb <- PRU_model_data_matrix[, -1]
+y_PRU_symb <- PRU_model_data_matrix[, 1]
+lasso_PRU_symb <- cv.glmnet(x = x_PRU_symb, y = y_PRU_symb)
+coef(lasso_PRU_symb)
+```
+
+### Caged Only Porites rus
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data_caged_only[,c("FSC.Events_per_cm_2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")]
+
+PRU_lasso <- PRU_lasso %>% 
+  mutate(FSC.Events_per_cm_2 = log10(FSC.Events_per_cm_2)) %>% 
+  filter(!is.na(FSC.Events_per_cm_2))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_symb <- PRU_model_data_matrix[, -1]
+y_PRU_symb <- PRU_model_data_matrix[, 1]
+lasso_PRU_symb <- cv.glmnet(x = x_PRU_symb, y = y_PRU_symb)
+coef(lasso_PRU_symb)
+```
+
+whole lotta nothing
+
+## Chlorophyll
+
+### P acuta
+```{r PAC lasso}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Chl_ug.cm.2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  mutate(sd_TA = scale(sd_TA))%>% 
+  mutate(sd_pH = scale(sd_pH))%>% 
+  mutate(sd_Salinity = scale(sd_Salinity))%>% 
+  mutate(sd_Temperature = scale(sd_Temperature))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+PAC_lasso$Cage_Uncaged <- as.factor(PAC_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_Chl_ug.cm.2 <- PAC_model_data_matrix[, -1]
+y_pac_Chl_ug.cm.2 <- PAC_model_data_matrix[, 1]
+lasso_PAC_chla <- cv.glmnet(x = x_pac_Chl_ug.cm.2, y = y_pac_Chl_ug.cm.2)
+coef(lasso_PAC_chla)
+```
+
+### P rus
+```{r PAC lasso}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Chl_ug.cm.2","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  mutate(sd_TA = scale(sd_TA))%>% 
+  mutate(sd_pH = scale(sd_pH))%>% 
+  mutate(sd_Salinity = scale(sd_Salinity))%>% 
+  mutate(sd_Temperature = scale(sd_Temperature))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+PRU_lasso$Cage_Uncaged <- as.factor(PRU_lasso$Cage_Uncaged)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+#remove NA values
+complete_cases <- complete.cases(y_PRU_Chl_ug.cm.2)
+x_PRU_Chl_ug.cm.2 <- x_PRU_Chl_ug.cm.2[complete_cases, ]
+y_PRU_Chl_ug.cm.2 <- y_PRU_Chl_ug.cm.2[complete_cases]
+
+# x_PRU_Chl_ug.cm.2 <- PRU_model_data_matrix[, -1]
+# y_PRU_Chl_ug.cm.2 <- PRU_model_data_matrix[, 1]
+lasso_PRU_chla <- cv.glmnet(x = x_PRU_Chl_ug.cm.2, y = y_PRU_Chl_ug.cm.2)
+coef(lasso_PRU_chla)
+```
+
+## Heterotrophy
+
+### Carbon
+
+#### PAC
+```{r}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Δ13C","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ13C))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_13c <- PAC_model_data_matrix[, -1]
+y_pac_13c <- PAC_model_data_matrix[, 1]
+lasso_PAC_13c <- cv.glmnet(x = x_pac_13c, y = y_pac_13c)
+coef(lasso_PAC_13c)
+```
+
+#### PRU
+
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Δ13C","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ13C))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies, cage_uncaged_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_13c <- PRU_model_data_matrix[, -1]
+y_PRU_13c <- PRU_model_data_matrix[, 1]
+lasso_PRU_13c <- cv.glmnet(x = x_PRU_13c, y = y_PRU_13c)
+coef(lasso_PRU_13c)
+```
+
+nothin again
+
+### Nitrogen
+
+#### PAC
+```{r}
+# Remove the Pin_Number and Species columns
+PAC_lasso <- PAC_model_data[,c("Δ15N","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ15N))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PAC_lasso$Genotype <- as.factor(PAC_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PAC_lasso)
+cage_uncaged_dummies <- model.matrix( ~ Cage_Uncaged - 1, data = PAC_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PAC_lasso <- cbind(PAC_lasso, genotype_dummies, cage_uncaged_dummies)
+PAC_lasso <- PAC_lasso[, !names(PAC_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PAC_model_data_matrix <- as.matrix(PAC_lasso)
+
+x_pac_15N <- PAC_model_data_matrix[, -1]
+y_pac_15N <- PAC_model_data_matrix[, 1]
+lasso_PAC_15N <- cv.glmnet(x = x_pac_15N, y = y_pac_15N)
+coef(lasso_PAC_15N)
+```
+
+#### PRU
+
+```{r}
+# Remove the Pin_Number and Species columns
+PRU_lasso <- PRU_model_data[,c("Δ15N","Cage_Uncaged","Genotype","sd_TA", "sd_pH", "sd_Salinity", "sd_Temperature")] %>% 
+  filter(!is.na(Δ15N))
+
+# Convert Genotype and Cage_Uncaged to factors if they are not already
+PRU_lasso$Genotype <- as.factor(PRU_lasso$Genotype)
+
+# Create dummy variables
+genotype_dummies <- model.matrix( ~ Genotype - 1, data = PRU_lasso)
+
+# Combine the dummy variables with the original data frame (excluding the original columns)
+PRU_lasso <- cbind(PRU_lasso, genotype_dummies)
+PRU_lasso <- PRU_lasso[, !names(PRU_lasso) %in% c("Genotype", "Cage_Uncaged")]
+
+#lasso works on matrix
+PRU_model_data_matrix <- as.matrix(PRU_lasso)
+
+x_PRU_15N <- PRU_model_data_matrix[, -1]
+y_PRU_15N <- PRU_model_data_matrix[, 1]
+lasso_PRU_15N <- cv.glmnet(x = x_PRU_15N, y = y_PRU_15N)
+coef(lasso_PRU_15N)
+```
