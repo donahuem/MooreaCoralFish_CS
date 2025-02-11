@@ -1,0 +1,124 @@
+---
+title: "CONFUSION"
+author: "Callie Stephenson"
+date: "2025-02-11"
+output: html_document
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r, echo=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(glmnet)
+library(effects)
+library(ggeffects)
+library(performance)
+library(ggpubr)
+library(lmerTest)
+library(PerformanceAnalytics)
+library(car)
+```
+
+```{r}
+response_data <- read.csv("/Users/calliestephenson/Documents/GitHub/Moorea_Coral_Physiology/data/T1_response_data.csv")
+response_data_old <- read.csv("/Users/calliestephenson/Downloads/T1_response_data_OLD.csv")%>% 
+  mutate(old_Percent_Change = Percent_Change)
+explanatory_variables <- read.csv("/Users/calliestephenson/Documents/GitHub/Moorea_Coral_Physiology/data/explanatory_variables_all.csv")
+old_explan <- read.csv("/Users/calliestephenson/Downloads/explanatory_variables_DEC.csv") %>% 
+  mutate(old_sd_temp = sd_Temperature)
+
+```
+
+```{r}
+model_data_old <- left_join(response_data_old, old_explan, by = join_by(CowTagID))
+model_data <- left_join(response_data, explanatory_variables, by = join_by(CowTagID))
+
+comparing <- left_join(model_data[,c("Placement_Code", "sd_Temperature", "Percent_Change")], model_data_old[,c("Placement_Code", "old_sd_temp", "old_Percent_Change")])
+```
+
+# Is percent change the same
+```{r}
+comparing$Percent_Change == comparing$old_Percent_Change
+#all.equal(comparing_explan$Percent_Change, comparing_explan$old_Percent_Change)
+```
+
+# Is temperature the same
+```{r}
+comparing$sd_Temperature == comparing$old_sd_temp
+```
+
+There's our issue. Why does it exist:
+```{r}
+comparing_explan <- left_join(explanatory_variables[,c("CowTagID", "sd_Temperature")], old_explan[,c("CowTagID", "old_sd_temp")])
+
+comparing_explan$sd_Temperature == comparing_explan$old_sd_temp
+```
+
+But, when I open it up, they look the same. So:
+```{r}
+all.equal(comparing_explan$sd_Temperature, comparing_explan$old_sd_temp)
+```
+
+# Mulitvariate Models
+
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_pH + sd_TA + sd_Temperature +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data_old %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+#AIC(linear_growth_model_pac)
+```
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_pH + sd_TA + sd_Temperature +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+#AIC(linear_growth_model_pac)
+```
+and THAT is why my data is significant / not...
+
+# Univariate models
+
+## Temp
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_Temperature +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+```
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_Temperature +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data_old %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+```
+## pH
+```{r}
+ linear_growth_model_pac <- lmer(Percent_Change ~ sd_pH+
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+```
+
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_pH +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data_old %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+```
+## TA
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_TA +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+```
+
+```{r}
+linear_growth_model_pac <- lmer(Percent_Change ~ sd_TA +
+                                  (1|Cage_Uncaged) + (1|Genotype), data = model_data_old %>% filter(Species == "Pocillopora acuta"))
+#check_model(linear_growth_model_pru_c)
+Anova(linear_growth_model_pac)
+```
+

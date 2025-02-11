@@ -71,7 +71,7 @@ symb_df <- SI_meta %>%
   filter(HS == "symb") %>% 
   left_join(symb_df_T0, by = "Genotype")%>% 
   mutate(δ15N_T1_T0 = δ15N - δ15N_T0) %>% 
-  mutate(δ13C_T1_T0 = δ13C - δ13C_T0)
+  mutate(δ13C_T1_T0 = δ13C - δ13C_T0) 
 
 SI_meta <- rbind(host_df, symb_df)
 

@@ -10,9 +10,10 @@ FCM <- read.csv("data/FCM_tidy.csv") %>%
 SI <- read.csv("data/SI_Tidy.csv")
 chl <- read.csv("data/Chl_tidy.csv")
 
-SI_join <- SI[,c("HS","δ15N", "δ13C", "Placement_Code","Pin_Number", "Cage_Uncaged", "Genotype", "Species", "CowTagID", "Δ15N", "Δ13C", "C_N_ratio","δ15N_T1_T0", "δ13C_T1_T0", "Δ15N_T1T0","Δ13C_T1T0")] %>%
-  pivot_wider(names_from = HS, values_from = c("δ15N", "δ13C", "C_N_ratio","δ15N_T1_T0", "δ13C_T1_T0", "Δ15N_T1T0","Δ13C_T1T0"), names_sep = "_") %>% 
-  filter(Pin_Number > 0)
+SI_join <- SI[,c("HS","δ15N", "δ13C", "Placement_Code","Pin_Number", "Cage_Uncaged", "Genotype", "Species", "CowTagID", "Δ15N", "Δ13C", "C_N_ratio","δ15N_T0", "δ13C_T0")] %>%
+  pivot_wider(names_from = HS, values_from = c("δ15N", "δ13C", "C_N_ratio", "δ15N_T0", "δ13C_T0"), names_sep = "_") %>% 
+  filter(!Pin_Number == "T0") %>% 
+  filter(!Pin_Number == 0)
 
 #metadata
 meta <- read.csv("data/coral_metadata.csv")
