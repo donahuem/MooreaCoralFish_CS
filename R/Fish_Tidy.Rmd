@@ -1,0 +1,131 @@
+---
+title: "Fish Tidy"
+author: "Callie Stephenson"
+date: "2025-03-15"
+output: html_document
+---
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+```{r packages, message=FALSE}
+library(dplyr)
+library(readr)
+library(here)
+library(fishualize)
+library(ggplot2)
+library(vegan)
+library(viridis)
+library(tidyr)
+library(stringr)
+library(lme4)
+library(mgcv)
+library(gridExtra)
+library(forcats) #needed for reversing factor levels
+```
+
+
+```{r response data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+functional_groups <- read.csv("data/fish_functional_groups.csv") %>% 
+  mutate(Herbivore = ifelse(Fine_Trophic %in% c("Herbivore/Detritivore","Primary Consumer","Scraper","Cropper", 
+                                                "Excavator", "Brusher", "Browser","Concealed Cropper", "Omnivore"), "Y", "N"))
+maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/data/MaxN.csv") %>% 
+  mutate(Species = ifelse(Species == "Himantura fai", "Pateobatis fai", Species))
+```
+
+
+First chunk of code subsets to only using 8 blocks per survey location, 4 from an 'on' and 4 from an 'adjacent'. I also remove pins where camera malfunctions made this not possible (Pin 13 and Pin 2).
+
+```{r subset to 4 blocks per location}
+block_count_per_location <- maxn %>%
+  group_by(Pin, On.Adjacent) %>%
+  summarise(num_blocks = n_distinct(Block))
+
+set.seed(123)
+subset_maxn <- maxn %>%
+  filter(!(Pin == "13")) %>% 
+  filter(!(Pin == "2")) %>% 
+  group_by(Pin, On.Adjacent) %>%
+  filter(Block %in% sample(unique(Block), 4, replace = FALSE)) %>%
+  ungroup()
+
+subset_block_count_per_location <- subset_maxn %>%
+  group_by(Pin, On.Adjacent) %>%
+  summarise(num_blocks = n_distinct(Block))
+
+#Check that everybody has 4 blocks 2 times:
+#table(subset_block_count_per_location$num_blocks, subset_block_count_per_location$Pin)
+```
+
+Removed unknowns, cryptic species, etc:
+```{r}
+subset_maxn_no_unk <- subset_maxn %>%
+  filter(!str_detect(Species, "nknown")) %>% #anything that has nknown for unknown species
+  filter(!(Species == "Bothus spp")) %>%  #goodbye flounder
+  filter(!(Species == "Scorpaenopsis diabolus")) %>% #scorpoionfish are crpytic
+  filter(!(Species == "Gymnothorax javanicus")) %>%  #sorry Julie
+  filter(!(Species == "Echidna nebulosa"))
+```
+
+Since we could count some species as distinct individuals by life stages, I have combined those counts together here:
+
+```{r combining life stages}
+subset_maxn_combined_life_stages <- subset_maxn_no_unk %>%
+  group_by(Pin, On.Adjacent, Block, Species) %>%
+  summarise(MaxN = if(n_distinct(Juvenile.Adult) > 1) sum(MaxN) else max(MaxN), .groups = 'drop') %>%
+  arrange(Pin, On.Adjacent, Block, Species)
+```
+
+And built a little code to double check that it went correctly (should create two empty data frames)
+```{r checking this}
+# Summarize to find duplicates
+resolved_duplicates <- subset_maxn_combined_life_stages %>%
+  dplyr::group_by(Pin, On.Adjacent, Block, Species) %>%
+  dplyr::summarise(count = dplyr::n(), .groups = 'drop') %>%
+  dplyr::filter(count > 1)
+
+# Subset the original data to only include the duplicates
+resolved_duplicate_rows <- subset_maxn_combined_life_stages %>%
+  dplyr::inner_join(resolved_duplicates, by = c("Pin", "On.Adjacent", "Block", "Species")) %>%
+  dplyr::arrange(Pin, On.Adjacent, Block, Species)
+```
+
+I then deal with extreme schooling events following methods from the Donovan regimes paper: "Additional methodology was developed for dealing with outliers in the fish data, accounting for extreme observations of schooling species. Extreme observations in the database were defined by calculating the upper 99.9% of all individual observations (e.g. one species, size and count on an individual transect), resulting in 26 observations out of over 0.5 million, comprised of 11 species. The distribution of individual counts in the entire database for those 11 species was then used to identify observations that fell above the 99.0% quantile of counts for each species individually. These observations were adjusted to the 99.0% quantile for analysis."
+
+```{r}
+# Identify extreme observations I am using the 99% quantile instead because my data is smaller
+extreme_threshold <- quantile(subset_maxn_combined_life_stages$MaxN, probs = 0.99) 
+
+# Identify species that have extreme observations
+extreme_species <- subset_maxn_combined_life_stages %>%
+  filter(MaxN > extreme_threshold) %>%
+  pull(Species) %>%
+  unique()
+
+#make function to adjust counts for these species:
+adjust_counts <- function(df, species, quantile_threshold) {
+  quantile_value <- quantile(df$MaxN[df$Species == species], probs = quantile_threshold, na.rm = TRUE)
+ df$MaxN[df$Species == species & df$MaxN > quantile_value] <- quantile_value
+  return(df)
+}
+
+#make the adjustment. I'm adjusting to the 90% quantile
+for (sp in extreme_species) {
+  adjusted_subset_maxn <- adjust_counts(subset_maxn_combined_life_stages, sp, 0.90)
+}
+```
+
+I want to make sure blocks are summarized appropriately, so I renamed them:
+```{r}
+adjusted_subset_maxn$Block <- paste0(adjusted_subset_maxn$On.Adjacent, " ", adjusted_subset_maxn$Block) #I want to make sure that factor levels are different for each combo of on/adjacent and block so that I don't accidentially combine blocks 
+```
+
+and ending by renaming the dataframe as just fish_tidy for future use:
+this allows me to make extra tidy data adjustments without breaking the dataframe name later on in the code!
+```{r make fish tidy}
+fish_tidy <- adjusted_subset_maxn
+write_csv(fish_tidy, here("Data", "fish_tidy.csv"))
+```

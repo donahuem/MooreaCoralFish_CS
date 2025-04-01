@@ -33,7 +33,8 @@ maxn <- read.csv("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS/da
   mutate(Species = ifelse(Species == "Himantura fai", "Pateobatis fai", Species))
 explan<- read.csv("data/explanatory_all_wide.csv") %>% 
   mutate(Pin = as.numeric(sub("V", "", CowTagID)))
-db <- read.csv("https://raw.githubusercontent.com/dbarnas/Community_Functional_Diversity/main/Data/Full_Metadata.csv") #Rugosity data pulled from Danielle Barnas' measurements
+db <- read.csv("data/DB_Full_Metadata.csv") #Rugosity data pulled from Danielle Barnas' measurements
+turb <- read.csv("data/Turb_NC.csv")
 ```
 
 ### TIDY DATA:
@@ -66,9 +67,14 @@ maxn$Pin <- maxn$alphabetical
 #write_csv(fish_map_data, here("Data", "fish_map_data.csv"))
 ```
 
+## adding in turb
+```{r}
+explan <- left_join(explan, db[,c("CowTagID", "meanRugosity")])
+```
+
 ## Cleaning up explan
 ```{r join rugosity}
-explan <- left_join(explan, db[,c("CowTagID", "meanRugosity")])
+explan <- left_join(explan, turb[,c("CowTagID", "del15N", "N_percent")])
 ```
 
 ```{r}

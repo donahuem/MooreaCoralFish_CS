@@ -1,0 +1,371 @@
+---
+title: "Herb_Fish"
+author: "Callie Stephenson"
+date: "2025-03-15"
+output: html_document
+---
+```{r}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+# Set-Up
+```{r packages, message=FALSE}
+library(dplyr)
+library(readr)
+library(here)
+library(fishualize)
+library(ggplot2)
+library(vegan)
+library(viridis)
+library(tidyr)
+library(stringr)
+library(lme4)
+library(mgcv)
+library(gridExtra)
+library(forcats) #needed for reversing factor levels
+library(cowplot)
+```
+
+## Explanatory Data
+```{r explanatory data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+explan<- read.csv("data/explanatory_all_wide.csv") %>% 
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+db <- read.csv("data/DB_Full_Metadata.csv") %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))#Rugosity data pulled from Danielle Barnas' measurements
+turb <- read.csv("data/Turb_NC.csv")
+```
+
+### adding in turb and rugosity
+```{r}
+# explan <- left_join(explan, db[,c("CowTagID", "meanRugosity", "dist_to_seep_m")])
+# explan <- left_join(explan, turb[,c("CowTagID", "del15N", "N_percent")])
+water_quality_explan <- explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m", "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_Silicate_umolL", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_pH", "Low_Tide_Mean_TA")]
+explan <- left_join(explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m")], turb[,c("CowTagID", "del15N", "N_percent")])
+explan <- left_join(explan, db[,c("CowTagID", "meanRugosity")])
+```
+
+### Cleaning up explan
+
+```{r}
+explan <- explan %>%
+   mutate(Pin = as.integer(sub("V", "", CowTagID)))
+# explan <- left_join(map_data_join[,c("Pin", "alphabetical")], explan, by = join_by(Pin))
+# explan$Pin <- explan$alphabetical 
+
+water_quality_explan <- water_quality_explan %>%
+   mutate(Pin = as.integer(sub("V", "", CowTagID)))
+```
+
+
+## Response Data
+```{r}
+fish_tidy <- read.csv("data/fish_tidy.csv")
+functional_groups <- read.csv("data/fish_functional_groups.csv") %>% 
+  mutate(Herbivore = ifelse(Fine_Trophic %in% c("Herbivore/Detritivore","Primary Consumer","Scraper","Cropper", 
+                                                "Excavator", "Brusher", "Browser","Concealed Cropper", "Omnivore"), "Y", "N"))
+```
+
+```{r}
+herbivores <- fish_tidy %>%
+  left_join(functional_groups[,c("Species", "Fine_Trophic", "Herbivore")], by = join_by(Species)) %>% 
+  filter(Herbivore == "Y") %>% 
+#  filter(!(Pin == "14" & Block == "On 8")) %>%  #This block only has one chub and it's messing with the ordination
+  filter(!(Pin == "14")) #This removes pin 14 entirely
+```
+
+# Alpha Diversity
+```{r}
+species_richness <- fish_tidy %>%
+#  filter(!Pin == "13") %>% #Already removed
+  filter(!Pin == "A") %>% #Pin 14
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(Richness = n_distinct(Species[MaxN > 0]))
+```
+
+# Ordination
+```{r}
+#make it wide
+wide_maxn_df <- pivot_wider(fish_tidy, 
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN) %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+#make the version without 14 wide
+wide_herb_df <- pivot_wider(herbivores, 
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN) %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+speciescolumms <- names(wide_maxn_df[,c(4:ncol(wide_maxn_df))])
+speciesdata <- wide_maxn_df[,c(4:ncol(wide_maxn_df))]
+
+herbspeciescolumns <-names(wide_herb_df[,c(4:ncol(wide_herb_df))])
+herbspeciesdata <- wide_herb_df[,c(4:ncol(wide_herb_df))]
+```
+
+```{r}
+Fish_trans <- decostand(speciesdata, method = "max")
+non_zero_rows <- rowSums(Fish_trans == 0) != ncol(Fish_trans)
+species.data.use <- Fish_trans[non_zero_rows, ]
+set.seed(123)
+ord = metaMDS(species.data.use, dist = "bray", trymax = 500, k = 2, trace = FALSE)
+ord
+stressplot(ord) ##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear
+##Stress Value = how well doe your NMDS represent reality (<0.2)
+plot(ord, type = "text")
+```
+
+```{r}
+sppscores(ord) <- Fish_trans #noam says you have to add the species back in
+```
+
+## Envfit
+```{r}
+explan_envfit <- left_join(wide_maxn_df, 
+                           explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
+                           by = "Pin")
+
+fit <- envfit(ord ~ del15N + N_percent + shore_dist_m + dist_to_seep_m, data = explan_envfit, na.rm = T, permutations = 999)
+fit
+```
+
+```{r}
+wc_explan_envfit <- left_join(wide_maxn_df, 
+                           water_quality_explan, 
+                           by = "Pin")
+
+fit <- envfit(ord ~ Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Silicate_umolL + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_pH + Low_Tide_Mean_TA + shore_dist_m + dist_to_seep_m, data = wc_explan_envfit, na.rm = T, permutations = 999)
+fit
+```
+
+
+### Plot it
+```{r}
+ord_scores <- as.data.frame(scores(ord, display = "sites"))
+ord_scores2 <- as.data.frame(scores(ord, "site"))
+envfit_vectors <- as.data.frame(fit$vectors$arrows)  # Extract arrow coordinates
+envfit_pvals <- fit$vectors$pvals  # Extract p-values
+envfit_vectors$Variable <- rownames(envfit_vectors)
+envfit_vectors$pval <- envfit_pvals  # Add p-values to the dataframe
+
+# Filter only significant vectors (p < 0.05)
+sig_vectors <- envfit_vectors %>% filter(pval < 0.05)
+
+# Scale arrows for better visualization (optional)
+arrow_scale <- 1  # Adjust scaling factor
+sig_vectors <- sig_vectors %>%
+  mutate(NMDS1 = NMDS1 * arrow_scale, NMDS2 = NMDS2 * arrow_scale)
+
+# Base NMDS plot
+nmds <- ggplot(data = ord_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point() +
+  theme_minimal()+
+  xlim(-1.2, 1.2) +
+  ylim(-1.2, 1.2)
+  
+nmds
+# Create NMDS plot with envfit arrows
+envfit <- ggplot(data = ord_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point() +
+  geom_segment(data = sig_vectors, 
+               aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+               arrow = arrow(length = unit(0.2, "cm")), 
+               color = "darkgreen") +
+  geom_text(data = sig_vectors, 
+            aes(x = NMDS1, y = NMDS2, label = Variable), 
+            hjust = 1.2, vjust = 1.2, color = "darkgreen") +
+  theme_minimal()+
+  xlim(-1.2, 1.2) +
+  ylim(-1.2, 1.2)
+
+# Print the plot
+(envfit)
+```
+
+## Significant species
+```{r}
+
+#Start with making a dataframe that has what we want from the ordination
+data.scores = as.data.frame(scores(ord, "site"))
+#including the factors (Pin)
+data.scores$Site = wide_maxn_df$Pin 
+#data.scores$Site <- factor(data.scores$Site, levels = c(1:223))
+# head(data.scores)
+
+#envfit to see which species are making a difference here:
+data.spp.fit <- envfit(data.scores, speciesdata, permutations = 999)
+
+#check that went ok
+#head(data.spp.fit)
+
+spp.scrs <- as.data.frame(scores(data.spp.fit, display = "vectors")) #save species intrinsic values into dataframe
+spp.scrs <- cbind(spp.scrs, Species = rownames(spp.scrs)) #add species names to dataframe
+#head(spp.scrs)
+
+# Extract p-values from the envfit result
+pvals <- data.spp.fit$vectors$pvals
+# Add the p-values to the spp.scrs dataframe
+spp.scrs$pval <- pvals
+
+# Subset data to show species significant at 0.05
+sig.spp.scrs <- subset(spp.scrs, pval <= 0.05)
+#make more strict because showing too many species
+#sig.spp.scrs <- subset(spp.scrs, pval <= 0.01)
+# sig.spp.scrs <- spp.scrs
+# sig.spp.scrs <- subset(spp.scrs, pvals<=0.05) #subset data to show species significant at 0.05
+
+head(sig.spp.scrs)
+```
+
+Plot with significant species
+```{r}
+envfit_sp <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
+  #geom_point() +
+  ggrepel::geom_text_repel(
+    data = sig.spp.scrs,
+    aes(x = NMDS1, y = NMDS2, label = Species),
+    cex = 2,
+    direction = "both",
+    segment.size = 0,
+    max.overlaps = getOption("ggrepel.max.overlaps", default = 100)
+  )+
+  theme_minimal()+
+  xlim(-1.2, 1.2) +
+  ylim(-1.2, 1.2)
+```
+
+#### Put the plots together:
+```{r}
+cowplot::plot_grid(nmds, envfit, envfit_sp, labels = c('A', 'B', 'C'), ncol = 3)
+```
+
+# Herbivore-only ordination
+```{r}
+Fish_trans_herb <- decostand(herbspeciesdata, method = "max")
+non_zero_rows <- rowSums(Fish_trans_herb == 0) != ncol(Fish_trans_herb)
+species.data.use <- Fish_trans_herb[non_zero_rows, ]
+
+ordherb = metaMDS(species.data.use, dist = "bray", trymax = 500, k = 2, trace = FALSE)
+ordherb 
+stressplot(ord) ##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear
+##Stress Value = how well doe your NMDS represent reality (<0.2)
+plot(ord, type = "text")
+```
+
+### Herbivore Envfit
+For an envfit, we need the explanatory dataset in the size of the fish data:
+```{r}
+explan_envfit_herb <- left_join(wide_herb_df, 
+                           explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
+                           by = "Pin")
+```
+
+```{r}
+fitherb <- envfit(ordherb ~ del15N + N_percent + shore_dist_m + meanRugosity, data = explan_envfit_herb, na.rm = T, permutations = 999) 
+fitherb
+```
+
+### Plot it
+```{r}
+ordherb_scores <- as.data.frame(scores(ordherb, display = "sites"))
+ordherb_scores2 <- as.data.frame(scores(ordherb, "site"))
+envfit_vectors <- as.data.frame(fitherb$vectors$arrows)  # Extract arrow coordinates
+envfit_pvals <- fitherb$vectors$pvals  # Extract p-values
+envfit_vectors$Variable <- rownames(envfit_vectors)
+envfit_vectors$pval <- envfit_pvals  # Add p-values to the dataframe
+
+# Filter only significant vectors (p < 0.05)
+sig_vectors <- envfit_vectors %>% filter(pval < 0.05)
+
+# Scale arrows for better visualization (optional)
+arrow_scale <- 1.5  # Adjust scaling factor
+sig_vectors <- sig_vectors %>%
+  mutate(NMDS1 = NMDS1 * arrow_scale, NMDS2 = NMDS2 * arrow_scale)
+
+# Base NMDS plot
+nmds_herb <- ggplot(data = ordherb_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point() +
+  theme_minimal()+
+  xlim(-2.3, 2.3) +
+  ylim(-1.5, 1.5)
+  
+
+# Create NMDS plot with envfit arrows
+envfit_herb <- ggplot(data = ordherb_scores, aes(x = NMDS1, y = NMDS2)) +
+  geom_point() +
+  geom_segment(data = sig_vectors, 
+               aes(x = 0, y = 0, xend = NMDS1, yend = NMDS2), 
+               arrow = arrow(length = unit(0.2, "cm")), 
+               color = "darkgreen") +
+  geom_text(data = sig_vectors, 
+            aes(x = NMDS1, y = NMDS2, label = Variable), 
+            hjust = 1.2, vjust = 1.2, color = "darkgreen") +
+  theme_minimal()+
+  xlim(-2.3, 2.3) +
+  ylim(-1.5, 1.5)
+
+# Print the plot
+print(envfit_herb)
+```
+
+## Significant species
+```{r}
+
+#Start with making a dataframe that has what we want from the ordination
+herbdata.scores = as.data.frame(scores(ordherb, "site"))
+#including the factors (Pin)
+herbdata.scores$Site = wide_herb_df$Pin 
+#data.scores$Site <- factor(data.scores$Site, levels = c(1:223))
+# head(data.scores)
+
+#envfit to see which species are making a difference here:
+data.spp.fit <- envfit(herbdata.scores, herbspeciesdata, permutations = 999)
+
+#check that went ok
+#head(data.spp.fit)
+
+spp.scrs <- as.data.frame(scores(data.spp.fit, display = "vectors")) #save species intrinsic values into dataframe
+spp.scrs <- cbind(spp.scrs, Species = rownames(spp.scrs)) #add species names to dataframe
+#head(spp.scrs)
+
+# Extract p-values from the envfit result
+pvals <- data.spp.fit$vectors$pvals
+# Add the p-values to the spp.scrs dataframe
+spp.scrs$pval <- pvals
+
+# Subset data to show species significant at 0.05
+sig.spp.scrs <- subset(spp.scrs, pval <= 0.05)
+#make more strict because showing too many species
+#sig.spp.scrs <- subset(spp.scrs, pval <= 0.01)
+# sig.spp.scrs <- spp.scrs
+# sig.spp.scrs <- subset(spp.scrs, pvals<=0.05) #subset data to show species significant at 0.05
+
+head(sig.spp.scrs)
+```
+
+Plot with significant species
+```{r}
+envfit_herb_sp <- ggplot(data = herbdata.scores, aes(x = NMDS1, y = NMDS2)) +
+  #geom_point() +
+  ggrepel::geom_text_repel(
+    data = sig.spp.scrs,
+    aes(x = NMDS1, y = NMDS2, label = Species),
+    cex = 3,
+    direction = "both",
+    segment.size = 0
+  )+
+  theme_minimal()+
+  xlim(-2.3, 2.3) +
+  ylim(-1.5, 1.5)
+```
+
+
+#### Put the plots together:
+```{r}
+cowplot::plot_grid(nmds_herb, envfit_herb, envfit_herb_sp, labels = c('A', 'B', 'C'),ncol = 3)
+```
+

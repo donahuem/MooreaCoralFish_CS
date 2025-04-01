@@ -1,0 +1,183 @@
+---
+title: "Fish_Alpha_Diversity"
+author: "Callie Stephenson"
+date: "2025-03-19"
+output: html_document
+---
+# SetUp
+```{r}
+library(dplyr)
+library(tidyr)
+library(MuMIn)
+library(car)
+```
+
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+## Explanatory Data
+## Explanatory Data
+```{r explanatory data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+explan<- read.csv("data/explanatory_all_wide.csv") %>% 
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+db <- read.csv("data/DB_Full_Metadata.csv") %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))#Rugosity data pulled from Danielle Barnas' measurements
+turb <- read.csv("data/Turb_NC.csv")
+```
+
+### adding in turb and rugosity
+```{r}
+# explan <- left_join(explan, db[,c("CowTagID", "meanRugosity", "dist_to_seep_m")])
+# explan <- left_join(explan, turb[,c("CowTagID", "del15N", "N_percent")])
+
+explan <- left_join(explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m")], turb[,c("CowTagID", "del15N", "N_percent")])
+explan <- left_join(explan, db[,c("CowTagID", "meanRugosity")])
+```
+
+### Cleaning up explan
+
+```{r}
+explan <- explan %>%
+   mutate(Pin = as.integer(sub("V", "", CowTagID)))
+# explan <- left_join(map_data_join[,c("Pin", "alphabetical")], explan, by = join_by(Pin))
+# explan$Pin <- explan$alphabetical 
+```
+
+## Response Data
+```{r}
+fish_tidy <- read.csv("data/fish_tidy.csv")
+functional_groups <- read.csv("data/fish_functional_groups.csv") %>% 
+  mutate(Herbivore = ifelse(Fine_Trophic %in% c("Herbivore/Detritivore","Primary Consumer","Scraper","Cropper", 
+                                                "Excavator", "Brusher", "Browser","Concealed Cropper", "Omnivore"), "Y", "N"))
+```
+
+```{r}
+herbivores <- fish_tidy %>%
+  left_join(functional_groups[,c("Species", "Fine_Trophic", "Herbivore")], by = join_by(Species)) %>% 
+  filter(Herbivore == "Y") %>% 
+#  filter(!(Pin == "14" & Block == "On 8")) %>%  #This block only has one chub and it's messing with the ordination
+  filter(!(Pin == "14")) #This removes pin 14 entirely
+```
+
+#### Calculating richness against gradient metrics:
+```{r}
+alpha_diversity <- fish_tidy %>%
+  filter(!Pin == "A") %>%  #Pin 14
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(
+    Shannon = diversity(MaxN, index = "shannon"),  # Calculate Shannon diversity
+    Richness = specnumber(MaxN),  # Calculate species richness
+    Evenness = Shannon / log(Richness)  # Calculate evenness
+  )
+```
+
+```{r}
+alpha_diversity_herb <- fish_tidy %>% 
+  distinct(Pin, On.Adjacent, Block) %>%  # Get all unique combinations
+  left_join(herbivores, by = c("Pin", "On.Adjacent", "Block")) %>%
+  filter(!Pin == "A") %>%
+  group_by(Pin, On.Adjacent, Block) %>%
+  summarise(
+    Shannon = ifelse(all(is.na(MaxN)), 0, diversity(MaxN, index = "shannon")),  
+    Richness = ifelse(all(is.na(MaxN)), 0, specnumber(MaxN)),  
+    Evenness = ifelse(Richness == 0, 0, Shannon / log(Richness))  
+  )
+```
+
+
+# Run univariate models with random effects and make a data frame:
+```{r}
+#the function I wrote for this
+run_lmer_models <- function(model_data, response_list, predictors, random_effects) {
+  results_list <- list()
+  
+  for (response in response_list) {
+    results <- data.frame(Predictor = character(),
+                          Beta = numeric(),
+                          P_Value = numeric(),
+                          Marginal_R2 = numeric(),
+                          Conditional_R2 = numeric(),
+                          AIC = numeric(),
+                          stringsAsFactors = FALSE)
+    
+    for (predictor in predictors) {
+      
+      # Construct the model formula
+      formula <- as.formula(paste(response, "~", predictor, "+", random_effects))
+      
+      # Fit the model and handle potential errors
+      model <- tryCatch({
+        lmer(formula, data = model_data)
+      }, error = function(e) {
+        return(NULL)
+      })
+      
+      if (is.null(model)) next
+      
+      # Extract p-value
+      anova_result <- Anova(model, type = "III")  # Ensure correct type for LMMs
+      if (!predictor %in% rownames(anova_result)) next
+      p_value <- anova_result[predictor, "Pr(>Chisq)"]
+      
+      # Extract R^2 values
+      r2_values <- as.numeric(r.squaredGLMM(model))
+      marginal_r2 <- r2_values[1]  # Marginal R^2
+      conditional_r2 <- r2_values[2]  # Conditional R^2
+      
+      # Extract AIC value
+      aic_value <- AIC(model)
+      
+      # Extract Beta Value
+      model_summary <- summary(model)
+      if (!predictor %in% rownames(model_summary$coefficients)) next
+      beta_value <- model_summary$coefficients[predictor, "Estimate"]
+      
+      # Store results
+      results <- rbind(results, 
+                       data.frame(Predictor = predictor,
+                                  Beta = beta_value,
+                                  Marginal_R2 = marginal_r2,
+                                  Conditional_R2 = conditional_r2,
+                                  P_Value = p_value,
+                                  AIC = aic_value))
+    }
+    
+    # Store the results in the list with response variable name
+    results_list[[response]] <- results
+  }
+  
+  return(results_list)
+}
+```
+
+```{r}
+# make model data
+model_data <- left_join(alpha_diversity, explan)
+
+# Define the models
+predictors <- c("dist_to_seep_m", "shore_dist_m", 
+                "del15N", "N_percent", 
+                "meanRugosity"
+                )
+
+response <- c("Shannon", "Richness", "Evenness"
+              )
+
+random_effects <- "(1|Pin) + (1|On.Adjacent)"
+
+#Run and print the function
+alpha_results <- run_lmer_models(model_data, response, predictors, random_effects)
+alpha_results
+```
+
+
+```{r}
+# make model data
+model_data <- left_join(alpha_diversity_herb, explan)
+alpha_results_herb <- run_lmer_models(model_data, response, predictors, random_effects)
+alpha_results_herb
+```
+
