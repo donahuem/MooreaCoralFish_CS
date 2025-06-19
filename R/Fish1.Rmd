@@ -84,6 +84,19 @@ explan <- left_join(map_data_join[,c("Pin", "alphabetical")], explan, by = join_
 explan$Pin <- explan$alphabetical 
 ```
 
+I'm going to remove unknowns, cryptic species, and eels. I'm also going to combine the stegastes that we know with ones we don't
+```{r}
+maxn_no_unk <- maxn %>%
+  filter(!str_detect(Species, "nknown")) %>% #anything that has nknown for unknown species
+  filter(!(Species == "Bothus spp")) %>%  #goodbye flounder
+  filter(!(Species == "Scorpaenopsis diabolus")) %>% #scorpoionfish are crpytic
+  filter(!(Species == "Gymnothorax javanicus")) %>%  #sorry Julie
+  filter(!(Species == "Echidna nebulosa")) %>% 
+  mutate(Species = ifelse(Species == "Stegastes fasciolatus", "Stegastes spp", Species)) %>% 
+  mutate(Species = ifelse(Species == "Stegastes sp", "Stegastes spp", Species))
+```
+
+
 First chunk of code subsets to only using 8 blocks per survey location, 4 from an 'on' and 4 from an 'adjacent'. I also remove pins where camera malfunctions made this not possible (Pin 13 and Pin 2).
 
 ```{r subset to 4 blocks per location}
@@ -115,20 +128,11 @@ subset_block_count_per_location <- subset_maxn %>%
 #   pull(Pin)
 ```
 
-Removed unknowns, cryptic species, etc:
-```{r}
-subset_maxn_no_unk <- subset_maxn %>%
-  filter(!str_detect(Species, "nknown")) %>% #anything that has nknown for unknown species
-  filter(!(Species == "Bothus spp")) %>%  #goodbye flounder
-  filter(!(Species == "Scorpaenopsis diabolus")) %>% #scorpoionfish are crpytic
-  filter(!(Species == "Gymnothorax javanicus")) %>%  #sorry Julie
-  filter(!(Species == "Echidna nebulosa"))
-```
 
 Since we could count some species as distinct individuals by life stages, I have combined those counts together here:
 
 ```{r combining life stages}
-subset_maxn_combined_life_stages <- subset_maxn_no_unk %>%
+subset_maxn_combined_life_stages <- subset_maxn %>%
   group_by(Pin, On.Adjacent, Block, Species) %>%
   summarise(MaxN = if(n_distinct(Juvenile.Adult) > 1) sum(MaxN) else max(MaxN), .groups = 'drop') %>%
   arrange(Pin, On.Adjacent, Block, Species)
@@ -148,40 +152,44 @@ resolved_duplicate_rows <- subset_maxn_combined_life_stages %>%
   dplyr::arrange(Pin, On.Adjacent, Block, Species)
 ```
 
+AT FIRST, I THOUGHT:
 I then deal with extreme schooling events following methods from the Donovan regimes paper: "Additional methodology was developed for dealing with outliers in the fish data, accounting for extreme observations of schooling species. Extreme observations in the database were defined by calculating the upper 99.9% of all individual observations (e.g. one species, size and count on an individual transect), resulting in 26 observations out of over 0.5 million, comprised of 11 species. The distribution of individual counts in the entire database for those 11 species was then used to identify observations that fell above the 99.0% quantile of counts for each species individually. These observations were adjusted to the 99.0% quantile for analysis."
 
+
+But now, I'm going to comment it out:
 ```{r}
-# Identify extreme observations I am using the 99% quantile instead because my data is smaller
-extreme_threshold <- quantile(subset_maxn_combined_life_stages$MaxN, probs = 0.99) 
-
-# Identify species that have extreme observations
-extreme_species <- subset_maxn_combined_life_stages %>%
-  filter(MaxN > extreme_threshold) %>%
-  pull(Species) %>%
-  unique()
-
-#make function to adjust counts for these species:
-adjust_counts <- function(df, species, quantile_threshold) {
-  quantile_value <- quantile(df$MaxN[df$Species == species], probs = quantile_threshold, na.rm = TRUE)
- df$MaxN[df$Species == species & df$MaxN > quantile_value] <- quantile_value
-  return(df)
-}
-
-#make the adjustment. I'm adjusting to the 90% quantile
-for (sp in extreme_species) {
-  adjusted_subset_maxn <- adjust_counts(subset_maxn_combined_life_stages, sp, 0.90)
-}
+# # Identify extreme observations I am using the 99% quantile instead because my data is smaller
+# extreme_threshold <- quantile(subset_maxn_combined_life_stages$MaxN, probs = 0.999) 
+# 
+# # Identify species that have extreme observations
+# extreme_species <- subset_maxn_combined_life_stages %>%
+#   filter(MaxN > extreme_threshold) %>%
+#   pull(Species) %>%
+#   unique()
+# #it's literally just one obvs of manini
+# 
+# #make function to adjust counts for these species:
+# adjust_counts <- function(df, species, quantile_threshold) {
+#   quantile_value <- quantile(df$MaxN[df$Species == species], probs = quantile_threshold, na.rm = TRUE)
+#  df$MaxN[df$Species == species & df$MaxN > quantile_value] <- quantile_value
+#   return(df)
+# }
+# 
+# #make the adjustment. I'm adjusting to the 90% quantile
+# for (sp in extreme_species) {
+#   adjusted_subset_maxn <- adjust_counts(subset_maxn_combined_life_stages, sp, 0.90)
+# }
 ```
 
 I want to make sure blocks are summarized appropriately, so I renamed them:
 ```{r}
-adjusted_subset_maxn$Block <- paste0(adjusted_subset_maxn$On.Adjacent, " ", adjusted_subset_maxn$Block) #I want to make sure that factor levels are different for each combo of on/adjacent and block so that I don't accidentially combine blocks 
+subset_maxn_combined_life_stages$Block <- paste0(subset_maxn_combined_life_stages$On.Adjacent, " ", subset_maxn_combined_life_stages$Block) #I want to make sure that factor levels are different for each combo of on/adjacent and block so that I don't accidentially combine blocks 
 ```
 
 and ending by renaming the dataframe as just fish_tidy for future use:
 this allows me to make extra tidy data adjustments without breaking the dataframe name later on in the code!
 ```{r make fish tidy}
-fish_tidy <- adjusted_subset_maxn
+fish_tidy <- subset_maxn_combined_life_stages
 ```
 
 ```{r only reef pins in fish_tidy}
@@ -235,7 +243,7 @@ Then used that one to re-make the long data frame with a presence column instead
 species <- names(wide_maxn_df[,c(4:ncol(wide_maxn_df))])
 
 fish_long <- pivot_longer(wide_maxn_df,
-                          cols = species,
+                          cols = all_of(species),
                           names_to = "species",
                           values_to = "Abundance")
 #This is going to be much longer, because it has a row for every species at every block
@@ -289,7 +297,7 @@ plot1 <- ggplot(maxn_avg1, aes(y = Species_order, x = avg_MaxN, fill = Family)) 
         plot.background = element_rect(fill = "white"),
         panel.border = element_blank()
 )
-ggsave(filename = "output/maxn_overview.png", plot1, height = 10, width = 4)
+#ggsave(filename = "output/maxn_overview.png", plot1, height = 10, width = 4)
 ```
 
 #### Dendrogram?
@@ -304,9 +312,7 @@ maxn_avg1 <- fish_tidy %>%
   arrange(Family_order, Species) %>%
   mutate(Species_order = factor(Species, levels = unique(Species)), # Update Species_order
          Species_order_num = as.numeric(Species_order)) # Add numerical factor levels for Species_order
-
 ```
-
 
 
 
@@ -635,7 +641,7 @@ Code from Linda:
 ```{r species data use}
 ##make a dataframe with ONLY your fish data
 ##within the parentheses you write which columns this would be
-Fish2 <-wide_maxn_df[c(3:ncol(wide_maxn_df))]
+Fish2 <-wide_maxn_df[c(4:ncol(wide_maxn_df))]
 
 ##extract the info about location (in this case your habitats) from the dataset, this table needs to have equal number of rows as the fish table
 Sites<-wide_maxn_df[c(1)]
@@ -644,6 +650,7 @@ Sites<-wide_maxn_df[c(1)]
 #Transform
 
 ##hellinger transformation is a common transformation with community data when you have a lot of zeros
+##max is a transformation that standardizes every fish to their max n
 Fish_com <- decostand(Fish2, method = "max")
 #Fish_com <- decostand(Fish2, method = "hellinger" )
 
@@ -753,7 +760,7 @@ AFS_nmds <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
   )+
   ggtitle("Unconstrained Ordination of Fish Communities Along an SGD Gradient")
 
-ggsave("output/NMDS_sig_spp_AFS.png", AFS_nmds, width=10, height=10)
+#ggsave("output/NMDS_sig_spp_AFS.png", AFS_nmds, width=10, height=10)
 ```
 
 ## NMDS with no 14
@@ -852,7 +859,7 @@ AFS_nmds_no_14 <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
   )+
   ggtitle("Unconstrained Ordination of Fish Communities Along an SGD Gradient")
 
-ggsave("output/NMDS_sig_spp_AFS_no_14.png", AFS_nmds_no_14, width=10, height=10)
+#ggsave("output/NMDS_sig_spp_AFS_no_14.png", AFS_nmds_no_14, width=10, height=10)
 ```
 
 #### others
@@ -1006,7 +1013,7 @@ I started with using the pulse pc axis, the low tide mean silicate, the distance
 
 Tests revealed the shore distance didn't matter (permutation test p = 0.555), so I changed this to only use the pulse pc axis, the low tide mean silicate, the distance to seep, and the distance to shore:
 ```{r Distance based redundancy analysis}
-Species_only <-wide_maxn_df[c(3:ncol(wide_maxn_df))]
+Species_only <-wide_maxn_df[c(4:ncol(wide_maxn_df))]
 transformed_communities <- decostand(Species_only, method = "max") #using max not hellinger
 
 # Extract the 'Pin' column from wide_maxn_df to merge with transformed data
@@ -1053,10 +1060,20 @@ anova(cap, by = "axis")
 So, both the axes we have plotted are considered significant.
 
 ```{r}
-anova(cap, by = "margin")
+anova_result <- anova(cap, by = "margin")
+anova_result
+total_ss <- sum(anova_result$`SumOfSqs`, na.rm = TRUE)  # includes residuals if present
+prop_explained <- anova_result$`SumOfSqs` / total_ss
+prop_explained
 ```
 
 Interestingly, all the axes are coming up as significant contributors to this variation.
+
+But, what about the r2?
+```{r}
+RsquareAdj(cap)
+```
+
 
 # PERMANOVA:
 ```{r}

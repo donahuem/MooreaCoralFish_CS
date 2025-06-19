@@ -41,21 +41,44 @@ turb <- read.csv("data/Turb_NC.csv")
 ```{r}
 # explan <- left_join(explan, db[,c("CowTagID", "meanRugosity", "dist_to_seep_m")])
 # explan <- left_join(explan, turb[,c("CowTagID", "del15N", "N_percent")])
-water_quality_explan <- explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m", "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_Silicate_umolL", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_pH", "Low_Tide_Mean_TA")]
-explan <- left_join(explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m")], turb[,c("CowTagID", "del15N", "N_percent")])
-explan <- left_join(explan, db[,c("CowTagID", "meanRugosity")])
+water_quality_explan <- explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m", "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_Silicate_umolL", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_pH", "Low_Tide_Mean_TA", "Low_Tide_Mean_Salinity", "pulse_pc1")]
+
+indirect_explan <- left_join(explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m")], turb[,c("CowTagID", "del15N", "N_percent", "C_percent", "C_N", "del13C")])
+indirect_explan <- left_join(indirect_explan, db[,c("CowTagID", "meanRugosity")])
+indirect_explan <- left_join(indirect_explan, water_quality_explan[,c("CowTagID", "pulse_pc1")])
+
+#Putting them together
+full_explan <- left_join(indirect_explan, water_quality_explan)
 ```
 
 ### Cleaning up explan
 
 ```{r}
-explan <- explan %>%
+indirect_explan <- indirect_explan %>%
    mutate(Pin = as.integer(sub("V", "", CowTagID)))
 # explan <- left_join(map_data_join[,c("Pin", "alphabetical")], explan, by = join_by(Pin))
 # explan$Pin <- explan$alphabetical 
 
 water_quality_explan <- water_quality_explan %>%
    mutate(Pin = as.integer(sub("V", "", CowTagID)))
+```
+
+thinking about correlations for models:
+```{r}
+direct_cor_matrix <- cor(na.omit(water_quality_explan[,c(2:9)]))
+direct_corplot <- ggcorrplot(direct_cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+
+indirect_cor_matrix <- cor(na.omit(indirect_explan[,c(2:10)]))
+indirect_corplot <- ggcorrplot(indirect_cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+```
+
+```{r}
+numeric_cols <- sapply(full_explan, is.numeric)
+all_cor_matrix <- cor(na.omit(full_explan[, numeric_cols]))
+direct_corplot <- ggcorrplot(all_cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
 ```
 
 
@@ -112,7 +135,7 @@ Fish_trans <- decostand(speciesdata, method = "max")
 non_zero_rows <- rowSums(Fish_trans == 0) != ncol(Fish_trans)
 species.data.use <- Fish_trans[non_zero_rows, ]
 set.seed(123)
-ord = metaMDS(species.data.use, dist = "bray", trymax = 500, k = 2, trace = FALSE)
+ord = metaMDS(species.data.use, dist = "bray", trymax = 500, k = 3, trace = FALSE)
 ord
 stressplot(ord) ##stressplot is just a diagnostic for your data, shows how your datapoints are distributed and should be somewhat linear
 ##Stress Value = how well doe your NMDS represent reality (<0.2)
@@ -126,20 +149,42 @@ sppscores(ord) <- Fish_trans #noam says you have to add the species back in
 ## Envfit
 ```{r}
 explan_envfit <- left_join(wide_maxn_df, 
-                           explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
+                          # explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
+                          indirect_explan[,c("Pin", "del15N", "N_percent", "C_N", "C_percent", "del13C", "meanRugosity", "dist_to_seep_m", "shore_dist_m")],
                            by = "Pin")
 
-fit <- envfit(ord ~ del15N + N_percent + shore_dist_m + dist_to_seep_m, data = explan_envfit, na.rm = T, permutations = 999)
-fit
+# indirect_fit <- envfit(ord ~ del15N + N_percent + shore_dist_m + dist_to_seep_m + meanRugosity, data = explan_envfit, na.rm = T, permutations = 999)
+indirect_fit <- envfit(ord ~ shore_dist_m + dist_to_seep_m + meanRugosity + del15N + N_percent + C_percent + C_N + del13C, data = explan_envfit, na.rm = T, permutations = 999)
+#remove non-significant del13c
+indirect_fit <- envfit(ord ~ shore_dist_m + dist_to_seep_m + meanRugosity + del15N + N_percent + C_percent + C_N, data = explan_envfit, na.rm = T, permutations = 999)
+indirect_fit
+
+#to get r2:
+indirect_fit$vectors$r
+
+indirect_r2_df <- data.frame(
+  Variable = rownames(indirect_fit$vectors$arrows),
+  R2 = indirect_fit$vectors$r,
+  P_value = indirect_fit$vectors$pvals
+)
+indirect_r2_df
 ```
+For the turb exploration, I kept everything. And, you know what, it all was significant, except the del13c. Which is kind of crazy. 
+
+```{r}
+plot(ord)
+plot(indirect_fit)
+```
+
+
 
 ```{r}
 wc_explan_envfit <- left_join(wide_maxn_df, 
                            water_quality_explan, 
                            by = "Pin")
 
-fit <- envfit(ord ~ Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Silicate_umolL + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_pH + Low_Tide_Mean_TA + shore_dist_m + dist_to_seep_m, data = wc_explan_envfit, na.rm = T, permutations = 999)
-fit
+direct_fit <- envfit(ord ~ Low_Tide_Mean_NN_umolL + Low_Tide_Mean_Silicate_umolL + Low_Tide_Mean_Phosphate_umolL + Low_Tide_Mean_pH + Low_Tide_Mean_TA +Low_Tide_Mean_Salinity + shore_dist_m + dist_to_seep_m, data = wc_explan_envfit, na.rm = T, permutations = 999)
+direct_fit
 ```
 
 
@@ -147,8 +192,8 @@ fit
 ```{r}
 ord_scores <- as.data.frame(scores(ord, display = "sites"))
 ord_scores2 <- as.data.frame(scores(ord, "site"))
-envfit_vectors <- as.data.frame(fit$vectors$arrows)  # Extract arrow coordinates
-envfit_pvals <- fit$vectors$pvals  # Extract p-values
+envfit_vectors <- as.data.frame(direct_fit$vectors$arrows)  # Extract arrow coordinates
+envfit_pvals <- direct_fit$vectors$pvals  # Extract p-values
 envfit_vectors$Variable <- rownames(envfit_vectors)
 envfit_vectors$pval <- envfit_pvals  # Add p-values to the dataframe
 
@@ -176,7 +221,7 @@ envfit <- ggplot(data = ord_scores, aes(x = NMDS1, y = NMDS2)) +
                arrow = arrow(length = unit(0.2, "cm")), 
                color = "darkgreen") +
   geom_text(data = sig_vectors, 
-            aes(x = NMDS1, y = NMDS2, label = Variable), 
+            aes(x = 0.5*NMDS1, y = 0.5*NMDS2, label = Variable), 
             hjust = 1.2, vjust = 1.2, color = "darkgreen") +
   theme_minimal()+
   xlim(-1.2, 1.2) +
@@ -188,7 +233,6 @@ envfit <- ggplot(data = ord_scores, aes(x = NMDS1, y = NMDS2)) +
 
 ## Significant species
 ```{r}
-
 #Start with making a dataframe that has what we want from the ordination
 data.scores = as.data.frame(scores(ord, "site"))
 #including the factors (Pin)
@@ -260,7 +304,7 @@ plot(ord, type = "text")
 For an envfit, we need the explanatory dataset in the size of the fish data:
 ```{r}
 explan_envfit_herb <- left_join(wide_herb_df, 
-                           explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
+                           indirect_explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
                            by = "Pin")
 ```
 
@@ -369,3 +413,5 @@ envfit_herb_sp <- ggplot(data = herbdata.scores, aes(x = NMDS1, y = NMDS2)) +
 cowplot::plot_grid(nmds_herb, envfit_herb, envfit_herb_sp, labels = c('A', 'B', 'C'),ncol = 3)
 ```
 
+
+GAMLAND

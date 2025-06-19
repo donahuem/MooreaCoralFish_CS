@@ -10,6 +10,8 @@ library(dplyr)
 library(tidyr)
 library(MuMIn)
 library(car)
+library(lme4)
+library(vegan)
 ```
 
 
@@ -68,6 +70,7 @@ alpha_diversity <- fish_tidy %>%
   filter(!Pin == "A") %>%  #Pin 14
   group_by(Pin, On.Adjacent, Block) %>%
   summarise(
+    Abundance = sum(MaxN),
     Shannon = diversity(MaxN, index = "shannon"),  # Calculate Shannon diversity
     Richness = specnumber(MaxN),  # Calculate species richness
     Evenness = Shannon / log(Richness)  # Calculate evenness
@@ -81,6 +84,7 @@ alpha_diversity_herb <- fish_tidy %>%
   filter(!Pin == "A") %>%
   group_by(Pin, On.Adjacent, Block) %>%
   summarise(
+    Abundance = sum(MaxN),
     Shannon = ifelse(all(is.na(MaxN)), 0, diversity(MaxN, index = "shannon")),  
     Richness = ifelse(all(is.na(MaxN)), 0, specnumber(MaxN)),  
     Evenness = ifelse(Richness == 0, 0, Shannon / log(Richness))  
@@ -112,6 +116,16 @@ run_lmer_models <- function(model_data, response_list, predictors, random_effect
       model <- tryCatch({
         lmer(formula, data = model_data)
       }, error = function(e) {
+        print(
+          paste(
+            "Error fitting model for",
+            response,
+            "with predictor",
+            predictor,
+            ":",
+            e$message
+          )
+        )
         return(NULL)
       })
       
@@ -163,7 +177,7 @@ predictors <- c("dist_to_seep_m", "shore_dist_m",
                 "meanRugosity"
                 )
 
-response <- c("Shannon", "Richness", "Evenness"
+response <- c("Abundance", "Shannon", "Richness", "Evenness"
               )
 
 random_effects <- "(1|Pin) + (1|On.Adjacent)"
@@ -179,5 +193,15 @@ alpha_results
 model_data <- left_join(alpha_diversity_herb, explan)
 alpha_results_herb <- run_lmer_models(model_data, response, predictors, random_effects)
 alpha_results_herb
+```
+
+```{r}
+pulse_df <- as.data.frame(lapply(nut_no_seep_scaled[, c(pulse_columns)], as.numeric))
+cor_matrix <- cor(pulse_df)
+corrplot(cor_matrix, method = "number")
+chart.Correlation(pulse_df)
+# Compute and show the  result
+corplot <- ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
 ```
 
