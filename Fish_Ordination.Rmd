@@ -1,5 +1,5 @@
 ---
-title: "Herb_Fish"
+title: "Fish_Ordination"
 author: "Callie Stephenson"
 date: "2025-03-15"
 output: html_document
@@ -37,6 +37,11 @@ db <- read.csv("data/DB_Full_Metadata.csv") %>%
 turb <- read.csv("data/Turb_NC.csv")
 ```
 
+CS added 6/19
+```{r}
+resid_explan <- read.csv(here("Data", "explan_complexity_resid.csv"))
+```
+
 ### adding in turb and rugosity
 ```{r}
 # explan <- left_join(explan, db[,c("CowTagID", "meanRugosity", "dist_to_seep_m")])
@@ -52,7 +57,6 @@ full_explan <- left_join(indirect_explan, water_quality_explan)
 ```
 
 ### Cleaning up explan
-
 ```{r}
 indirect_explan <- indirect_explan %>%
    mutate(Pin = as.integer(sub("V", "", CowTagID)))
@@ -147,6 +151,8 @@ sppscores(ord) <- Fish_trans #noam says you have to add the species back in
 ```
 
 ## Envfit
+
+### Turb
 ```{r}
 explan_envfit <- left_join(wide_maxn_df, 
                           # explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
@@ -176,8 +182,7 @@ plot(ord)
 plot(indirect_fit)
 ```
 
-
-
+### Water Quality Envfit
 ```{r}
 wc_explan_envfit <- left_join(wide_maxn_df, 
                            water_quality_explan, 
@@ -188,7 +193,7 @@ direct_fit
 ```
 
 
-### Plot it
+#### Plot it
 ```{r}
 ord_scores <- as.data.frame(scores(ord, display = "sites"))
 ord_scores2 <- as.data.frame(scores(ord, "site"))
@@ -231,7 +236,40 @@ envfit <- ggplot(data = ord_scores, aes(x = NMDS1, y = NMDS2)) +
 (envfit)
 ```
 
-## Significant species
+## Residual 
+```{r}
+resid_explan_envfit <- left_join(wide_maxn_df, 
+                          # explan[, c("Pin", "del15N", "N_percent", "meanRugosity", "shore_dist_m", "dist_to_seep_m")], 
+                          resid_explan,
+                           by = "Pin")
+
+# resid_fit <- envfit(ord ~ del15N + N_percent + shore_dist_m + dist_to_seep_m + meanRugosity, data = explan_envfit, na.rm = T, permutations = 999)
+resid_fit <- envfit(ord ~ res_dist_to_seep_m + res_shore_dist_m + res_del15N + res_N_percent + res_C_percent + res_C_N + res_del13C + res_Low_Tide_Mean_NN_umolL + res_Low_Tide_Mean_Silicate_umolL + res_Low_Tide_Mean_Phosphate_umolL + res_Low_Tide_Mean_pH + res_Low_Tide_Mean_TA + res_Low_Tide_Mean_Salinity + res_pulse_pc1, data = resid_explan_envfit, na.rm = T, permutations = 999)
+resid_fit
+
+#to get r2:
+resid_fit$vectors$r
+
+resid_r2_df <- data.frame(
+  Variable = rownames(resid_fit$vectors$arrows),
+  R2 = resid_fit$vectors$r,
+  P_value = resid_fit$vectors$pvals
+)
+resid_r2_df
+
+resid_r2_df_sig <- resid_r2_df %>% filter(P_value < 0.05)
+```
+
+The nice thing about envfit is that it's running permutations on each variable individually, not looking at it as a multivariate model. But, these variables are correlated. See:
+```{r}
+resid_cor_matrix <- cor(na.omit(resid_explan[,c("res_dist_to_seep_m", "res_shore_dist_m", "res_del15N", "res_C_percent", "res_Low_Tide_Mean_Silicate_umolL","res_Low_Tide_Mean_Salinity")]))
+resid_corplot <- ggcorrplot(resid_cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+resid_corplot
+```
+
+
+# Significant species
 ```{r}
 #Start with making a dataframe that has what we want from the ordination
 data.scores = as.data.frame(scores(ord, "site"))
@@ -282,7 +320,7 @@ envfit_sp <- ggplot(data = data.scores, aes(x = NMDS1, y = NMDS2)) +
   ylim(-1.2, 1.2)
 ```
 
-#### Put the plots together:
+#### Put the envfit and species plots together:
 ```{r}
 cowplot::plot_grid(nmds, envfit, envfit_sp, labels = c('A', 'B', 'C'), ncol = 3)
 ```

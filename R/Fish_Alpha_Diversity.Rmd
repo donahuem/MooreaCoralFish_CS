@@ -18,7 +18,7 @@ library(vegan)
 ```{r}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 ```
-## Explanatory Data
+
 ## Explanatory Data
 ```{r explanatory data}
 setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
@@ -174,7 +174,7 @@ model_data <- left_join(alpha_diversity, explan)
 # Define the models
 predictors <- c("dist_to_seep_m", "shore_dist_m", 
                 "del15N", "N_percent", 
-                "meanRugosity"
+                "meanRugosity", "Low_Tide_Mean_Salinity", "pulse_pc1"
                 )
 
 response <- c("Abundance", "Shannon", "Richness", "Evenness"
@@ -184,7 +184,13 @@ random_effects <- "(1|Pin) + (1|On.Adjacent)"
 
 #Run and print the function
 alpha_results <- run_lmer_models(model_data, response, predictors, random_effects)
-alpha_results
+
+#Filter for only significant predictors
+alpha_sig <- lapply(alpha_results, function(df) {
+  df %>% filter(P_Value < 0.05)
+})
+
+alpha_sig
 ```
 
 
@@ -193,15 +199,13 @@ alpha_results
 model_data <- left_join(alpha_diversity_herb, explan)
 alpha_results_herb <- run_lmer_models(model_data, response, predictors, random_effects)
 alpha_results_herb
+
+#Filter for only significant predictors
+alpha_sig_herb <- lapply(alpha_results_herb, function(df) {
+  df %>% filter(P_Value < 0.05)
+})
+
+alpha_sig_herb
 ```
 
-```{r}
-pulse_df <- as.data.frame(lapply(nut_no_seep_scaled[, c(pulse_columns)], as.numeric))
-cor_matrix <- cor(pulse_df)
-corrplot(cor_matrix, method = "number")
-chart.Correlation(pulse_df)
-# Compute and show the  result
-corplot <- ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
-          lab = TRUE)
-```
 

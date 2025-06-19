@@ -1,0 +1,68 @@
+---
+title: "Rugosity_Residuals"
+author: "Callie Stephenson"
+date: "2025-06-19"
+output: html_document
+---
+
+# Set Up
+## Load libraries
+```{r}
+library(dplyr)
+library(readr)
+library(here)
+```
+
+## Load data
+```{r}
+explan<- read.csv("data/explanatory_all_wide.csv") %>% 
+  mutate(Pin = as.numeric(sub("V", "", CowTagID)))
+db <- read.csv("data/DB_Full_Metadata.csv") %>% 
+  mutate_all(~ifelse(is.na(.), 0, .)) #Rugosity data pulled from Danielle Barnas' measurements
+turb <- read.csv("data/Turb_NC.csv")
+```
+
+### adding in turb and rugosity
+```{r}
+water_quality_explan <- explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m", "Low_Tide_Mean_NN_umolL", "Low_Tide_Mean_Silicate_umolL", "Low_Tide_Mean_Phosphate_umolL", "Low_Tide_Mean_pH", "Low_Tide_Mean_TA", "Low_Tide_Mean_Salinity", "pulse_pc1")]
+
+indirect_explan <- left_join(explan[,c("CowTagID", "dist_to_seep_m", "shore_dist_m")], turb[,c("CowTagID", "del15N", "N_percent", "C_percent", "C_N", "del13C")])
+
+#Add in rugosity
+indirect_explan <- left_join(indirect_explan, db[,c("CowTagID", "meanRugosity")])
+#indirect_explan <- left_join(indirect_explan, water_quality_explan[,c("CowTagID", "pulse_pc1")])
+
+#Putting them together
+full_explan <- left_join(indirect_explan, water_quality_explan)
+
+#Add in Pin
+full_explan <- full_explan %>%
+  mutate(Pin = as.integer(sub("V", "", CowTagID))) %>% 
+  filter(!Pin == "13") #Remove 13 because not used in this experiment
+```
+
+# Linear model against structural complexity applied across data frame
+```{r}
+#Grab everything but identifiers and rugosity for this
+columns_to_resid <- setdiff(names(full_explan), c("CowTagID", "Pin", "meanRugosity"))
+
+# apply linear model to each column and make into new
+residual_explan <- as.data.frame(
+  sapply(columns_to_resid, function(col) {
+    resid(lm(full_explan[[col]] ~ full_explan$meanRugosity))
+  })
+)
+
+#rename columns so you don't get confused down the line
+names(residual_explan) <- paste0("res_", columns_to_resid)
+
+#Put back in CowTag and Pin
+residual_explan$CowTagID <- full_explan$CowTagID
+residual_explan$Pin <- full_explan$Pin
+```
+
+# Write final csv 
+```{r}
+write_csv(residual_explan, here("Data", "explan_complexity_resid.csv"))
+```
+
