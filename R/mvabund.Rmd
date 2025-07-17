@@ -1,0 +1,360 @@
+---
+title: "MVABUND"
+author: "Callie Stephenson"
+date: "2025-07-09"
+output: html_document
+---
+```{r}
+library(dplyr)
+library(tidyr)
+library(mvabund)
+library(skimr)
+library(ggcorrplot)
+library(reshape2)
+```
+
+# Set-up
+## Explanatory Data
+```{r explanatory data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+explan<- read.csv("data/explanatory_all_wide.csv") %>% 
+  mutate(Pin = as.numeric(sub("V", "", CowTagID))) %>% 
+  filter(!Pin == "13") %>% 
+  filter(!Pin == "2") %>% 
+  mutate(Pin = as.factor(Pin))
+
+db <- read.csv("data/DB_Full_Metadata.csv") %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))#Rugosity data pulled from Danielle Barnas' measurements
+# turb <- read.csv("data/Turb_NC.csv")
+
+explan <- explan %>% 
+  left_join(db[,c("CowTagID", "meanRugosity")])
+
+rm(db)
+
+# skimr::skim(explan) # Great function to get an overview of the data
+```
+
+### Correlations to choose variables:
+#### salinity
+```{r}
+salinity_data <- explan %>%
+  select(contains("Salinity"), dist_to_seep_m)
+
+cor_matrix <- cor(salinity_data, use = "pairwise.complete.obs")
+
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+
+rm(salinity_data, cor_matrix)
+```
+
+#### silicate
+```{r}
+Silicate_data <- explan %>%
+  select(contains("Silicate"), dist_to_seep_m)
+
+cor_matrix <- cor(Silicate_data, use = "pairwise.complete.obs")
+
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+rm(Silicate_data, cor_matrix)
+```
+
+Really, none of these are great. But I want to include salinity, because it is something the fish can feel and respond to directly. 
+
+#### spatial covarince
+```{r}
+# spatial_corr <- explan_model %>%
+#   select(-Pin, -scale_sqrt_dist_seep_m, -scale_log_shore_dist_m)
+# cor_matrix <- cor(spatial_corr, use = "pairwise.complete.obs")
+# ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+#           lab = TRUE)
+
+# rm(spatial_corr, cor_matrix)
+```
+
+
+### Look at skew
+
+```{r}
+par(mfrow=c(3,2))
+hist(explan$dist_to_seep_m) #left skew
+hist(explan$shore_dist_m) #right skew
+hist(explan$N_percent) #fine
+hist(explan$Low_Tide_Mean_Salinity, breaks = 9) #fine?
+hist(explan$meanRugosity, breaks = 9) #fine?
+```
+
+#### Transform and scale
+dist_to_seep_m
+```{r}
+par(mfrow = c(1,2))
+hist(explan$dist_to_seep_m) #left skew
+hist(sqrt(explan$dist_to_seep_m)) #less skew
+explan$scale_sqrt_dist_seep_m <- scale(sqrt(explan$dist_to_seep_m))
+```
+
+shore_dist_m
+```{r}
+par(mfrow = c(1,2))
+hist(explan$shore_dist_m) #left skew
+hist(log(explan$shore_dist_m)) #less skew
+explan$scale_log_shore_dist_m <- scale(log(explan$dist_to_seep_m))
+```
+
+N_percent
+```{r}
+par(mfrow = c(1,2))
+hist(explan$N_percent) #no skew
+
+explan$scale_N_percent <- scale((explan$N_percent))
+```
+
+Low_Tide_Mean_Salinity
+```{r}
+hist(explan$Low_Tide_Mean_Salinity, breaks = 9) #fine?
+hist(scale(explan$Low_Tide_Mean_Salinity), breaks = 9) #not fine?
+hist(log(explan$Low_Tide_Mean_Salinity), breaks = 9) #better?
+hist(scale(log(explan$Low_Tide_Mean_Salinity)), breaks = 9) #fine?
+
+explan$scale_log_ltm_salinity <- scale(log(explan$Low_Tide_Mean_Salinity))
+```
+
+```{r}
+par(mfrow = c(1,1))
+hist(explan$meanRugosity) #no skew
+
+explan$scale_meanRugosity <- scale((explan$meanRugosity))
+```
+
+### finish explan
+```{r}
+explan_variables <- explan %>% 
+  select(Pin, lat, lon, scale_sqrt_dist_seep_m, scale_log_shore_dist_m, scale_N_percent, scale_log_ltm_salinity, scale_meanRugosity)
+```
+
+## Response Data
+```{r}
+fish_tidy <- read.csv("data/fish_tidy.csv")
+#make it wide
+wide_maxn_df <- pivot_wider(fish_tidy, 
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN) %>% 
+  mutate_all(~ifelse(is.na(.), 0, .)) %>% 
+  mutate(Pin = as.factor(Pin))
+
+# explan_fish <- left_join(wide_maxn_df, 
+#                            explan[, c("Pin", "del15N", "N_percent", "shore_dist_m", "dist_to_seep_m", "Low_Tide_Mean_Salinity")], 
+#                            by = "Pin")
+# 
+# predictors <- c("dist_to_seep_m", "shore_dist_m", "N_percent", "Low_Tide_Mean_Salinity")
+# explan_fish <- explan_fish %>%
+#   mutate(across(all_of(predictors),
+#                 ~ as.numeric(scale(.)),
+#                 .names = "{.col}_scale"))
+```
+
+# MVABUND
+
+## model data
+make an mvabund object
+```{r}
+predictors <- c("scale_N_percent", "scale_log_ltm_salinity", "scale_sqrt_dist_seep_m", "scale_log_shore_dist_m", "scale_meanRugosity")
+
+explan_fish <- left_join(wide_maxn_df,
+                           explan %>% select(all_of(predictors), "Pin"),
+                           by = "Pin")
+
+meta_cols <- c("Pin","On.Adjacent","Block")
+fish_mv   <- mvabund(wide_maxn_df %>%  select(-all_of(meta_cols)))
+```
+
+## Model
+Null
+```{r}
+model_mv_null <- manyglm(fish_mv ~ 1, 
+                    family = "negative.binomial", 
+                    data = explan_fish)
+```
+
+
+Predictors
+```{r}
+model_mv <- manyglm(fish_mv ~ scale_log_shore_dist_m + scale_sqrt_dist_seep_m + scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity, 
+                    family = "negative.binomial", 
+                    data = explan_fish)
+```
+
+```{r}
+model_mv_Pin <- manyglm(fish_mv ~ scale_log_shore_dist_m + scale_sqrt_dist_seep_m + scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity + Pin, 
+                    family = "negative.binomial", 
+                    data = explan_fish)
+```
+
+### Check model assumptions:
+```{r}
+plot(model_mv)
+```
+### Check mean-variance:
+```{r}
+#meanvar.plot(fish_mv~, col = treatment)
+```
+
+### ANOVA
+```{r}
+set.seed(123)  
+anova_full <- mvabund::anova.manyglm(
+  model_mv,
+  resamp = "montecarlo",             # or "pit.trap"
+  block  = explan_fish$Pin,                  # repeat‑measure structure
+  nBoot  = 999,                      # increase for more precision, takes time (~28 min 35 sec)
+  test   = "LR",                     # likelihood‑ratio test
+  p.uni  = "adjusted"                # univariate p‑values too
+)
+```
+
+If you do not have a specific hypothesis in mind that you want to test, and are instead interested in which model terms are statistically significant, then the summary() function will come in handy. However results aren’t quite as trustworthy as for anova(). The reason is that re-samples are taken under the alternative hypothesis for summary(), where there is a greater chance of fitted values being zero, especially for rarer taxa (e.g. if there is a treatment combination in which a taxon is never present). Abundances don’t re-sample well if their predicted mean is zero.
+
+### Model Summary
+```{r}
+summary(model_mv)
+```
+
+### Total Deviance
+```{r}
+# Sum deviance across all species for null and full model
+total_dev_null <- sum(deviance(model_mv_null))
+total_dev_full <- sum(deviance(model_mv))
+
+total_dev_explained <- total_dev_null - total_dev_full
+total_dev_explained
+
+# Predictor deviances from anova output
+predictor_dev <- c(447.6, 450.2, 172.3, 177.8)  
+
+# Calculate proportion of explained deviance by each predictor
+prop_explained <- predictor_dev / total_dev_explained
+
+names(prop_explained) <- c("Distance shore", "Distance seep", "Nitrogen", "Salinity")
+
+prop_explained
+
+```
+
+```{r}
+total_dev_null
+total_dev_full
+total_dev_explained
+```
+
+### Species-Level Coefficient Heatmap
+```{r}
+# Extract coefficients
+coef_mat <- coef(model_mv)  # matrix of coefficients [species x predictors]
+
+# Turn into tidy format
+coef_df <- melt(coef_mat, varnames = c("Predictor", "Species"), value.name = "Coefficient")
+
+# Plot heatmap
+library(viridis)
+mid_color <- "gray90"  # neutral center
+low_color <- viridis(4, option = "D")[1]   # dark purple-blue (negative)
+high_color <- viridis(5, option = "D")[5]  # bright yellow-green (positive)
+
+ggplot(coef_df, aes(x = Predictor, y = Species, fill = Coefficient)) +
+  geom_tile() +
+  scale_fill_gradient2(low = low_color, mid = mid_color, high = high_color, midpoint = 0) +
+  theme_minimal(base_size = 12) +
+  labs(title = "Species-Level Coefficients by Predictor")
+  
+```
+
+## Model without 14
+```{r}
+predictors <- c("scale_N_percent", "scale_log_ltm_salinity", "scale_sqrt_dist_seep_m", "scale_log_shore_dist_m", "scale_meanRugosity")
+wide_maxn_df_no14 <- wide_maxn_df %>% 
+  filter(!Pin == "14") %>% 
+  mutate(Pin = droplevels(as.factor(Pin)))
+
+explan_fish_no14 <- left_join(wide_maxn_df_no14,
+                           explan %>% select(all_of(predictors), "Pin"),
+                           by = "Pin")%>% 
+  mutate(Pin = droplevels(as.factor(Pin)))
+
+meta_cols <- c("Pin","On.Adjacent","Block")
+fish_mv_no14   <- mvabund(wide_maxn_df_no14 %>%  select(-all_of(meta_cols)))
+```
+Null
+```{r}
+model_mv_null_no14 <- manyglm(fish_mv_no14 ~ 1, 
+                    family = "negative.binomial", 
+                    data = explan_fish_no14)
+```
+
+
+Predictors
+```{r}
+model_mv_no14 <- manyglm(fish_mv_no14 ~ scale_sqrt_dist_seep_m + scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity, 
+                    family = "negative.binomial", 
+                    data = explan_fish_no14)
+
+model_mv_no14_Pin <- manyglm(fish_mv_no14 ~ scale_sqrt_dist_seep_m + scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity + Pin, 
+                    family = "negative.binomial", 
+                    data = explan_fish_no14)
+
+mvabund::anova.manyglm(model_mv_no14_Pin)
+```
+
+### Check model assumptions:
+```{r}
+plot(model_mv_no14)
+```
+### Check mean-variance:
+```{r}
+#meanvar.plot(fish_mv~, col = treatment)
+```
+
+### ANOVA
+```{r}
+set.seed(123)  
+anova_full <- mvabund::anova.manyglm(
+  model_mv_no14,
+  resamp = "montecarlo",             # or "pit.trap"
+  block  = explan_fish_no14$Pin,                  # repeat‑measure structure
+  nBoot  = 999,                      # increase for more precision, takes time (~28 min 35 sec)
+  test   = "LR",                     # likelihood‑ratio test
+  p.uni  = "adjusted"                # univariate p‑values too
+)
+
+anova_full
+```
+
+
+### Model Summary
+```{r}
+summary(model_mv_no14)
+```
+
+### Total Deviance
+```{r}
+# Sum deviance across all species for null and full model
+total_dev_null <- sum(deviance(model_mv_null))
+total_dev_full <- sum(deviance(model_mv_no14))
+
+total_dev_explained <- total_dev_null - total_dev_full
+total_dev_explained
+
+# Predictor deviances from anova output
+# predictor_dev <- c(447.6, 450.2, 172.3, 177.8)  
+# 
+# # Calculate proportion of explained deviance by each predictor
+# prop_explained <- predictor_dev / total_dev_explained
+# 
+# names(prop_explained) <- c("Distance shore", "Distance seep", "Nitrogen", "Salinity")
+# 
+# prop_explained
+
+```

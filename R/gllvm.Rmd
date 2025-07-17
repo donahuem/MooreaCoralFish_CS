@@ -1,0 +1,630 @@
+---
+title: "gllvm"
+author: "Callie Stephenson"
+date: "2025-07-03"
+output: html_document
+---
+```{r}
+library(mvabund)
+library(gllvm)
+library(dplyr)
+library(tidyr)
+library(ggcorrplot)
+```
+
+# Set-up
+## Explanatory Data
+```{r explanatory data}
+setwd("/Users/calliestephenson/Documents/GitHub/MooreaCoralFish_CS")
+
+explan<- read.csv("data/explanatory_all_wide.csv") %>% 
+  mutate(Pin = as.numeric(sub("V", "", CowTagID))) %>% 
+  filter(!Pin == "13") %>% 
+  filter(!Pin == "2")
+
+db <- read.csv("data/DB_Full_Metadata.csv") %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))#Rugosity data pulled from Danielle Barnas' measurements
+# turb <- read.csv("data/Turb_NC.csv")
+
+explan <- explan %>% 
+  left_join(db[,c("CowTagID", "meanRugosity")])
+```
+
+### Correlations to choose variables:
+#### salinity
+```{r}
+salinity_data <- explan %>%
+  select(contains("Salinity"), dist_to_seep_m)
+
+cor_matrix <- cor(salinity_data, use = "pairwise.complete.obs")
+
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+```
+
+#### silicate
+```{r}
+Silicate_data <- explan %>%
+  select(contains("Silicate"), dist_to_seep_m)
+
+cor_matrix <- cor(Silicate_data, use = "pairwise.complete.obs")
+
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+```
+
+Really, none of these are great. But I want to include salinity, because it is something the fish can feel and respond to directly. 
+
+#### spatial covarince
+```{r}
+# spatial_corr <- explan_model %>%
+#   select(-Pin, -scale_sqrt_dist_seep_m, -scale_log_shore_dist_m)
+# cor_matrix <- cor(spatial_corr, use = "pairwise.complete.obs")
+# ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+#           lab = TRUE)
+```
+
+
+### Look at skew
+
+```{r}
+par(mfrow=c(2,2))
+hist(explan$dist_to_seep_m) #left skew
+hist(explan$shore_dist_m) #right skew
+hist(explan$N_percent) #fine
+hist(explan$Low_Tide_Mean_Salinity, breaks = 9) #fine?
+```
+#### Transform and scale
+dist_to_seep_m
+```{r}
+par(mfrow = c(1,2))
+hist(explan$dist_to_seep_m) #left skew
+hist(sqrt(explan$dist_to_seep_m)) #less skew
+explan$scale_sqrt_dist_seep_m <- scale(sqrt(explan$dist_to_seep_m))
+```
+
+shore_dist_m
+```{r}
+par(mfrow = c(1,2))
+hist(explan$shore_dist_m) #left skew
+hist(log(explan$shore_dist_m)) #less skew
+explan$scale_log_shore_dist_m <- scale(log(explan$dist_to_seep_m))
+```
+
+N_percent
+```{r}
+par(mfrow = c(1,2))
+hist(explan$N_percent) #no skew
+
+explan$scale_N_percent <- scale((explan$N_percent))
+```
+
+Low_Tide_Mean_Salinity
+```{r}
+hist(explan$Low_Tide_Mean_Salinity, breaks = 9) #fine?
+hist(scale(explan$Low_Tide_Mean_Salinity), breaks = 9) #not fine?
+hist(log(explan$Low_Tide_Mean_Salinity), breaks = 9) #better?
+hist(scale(log(explan$Low_Tide_Mean_Salinity)), breaks = 9) #fine?
+
+explan$scale_log_ltm_salinity <- scale(log(explan$Low_Tide_Mean_Salinity))
+```
+
+meanRugosity
+```{r}
+par(mfrow = c(1,1))
+hist(explan$meanRugosity) #no skew
+
+explan$scale_meanRugosity <- scale((explan$meanRugosity))
+```
+### finish explan
+```{r}
+explan_variables <- explan %>% 
+  select(Pin, lat, lon, scale_sqrt_dist_seep_m, scale_log_shore_dist_m, scale_N_percent, scale_log_ltm_salinity,scale_meanRugosity)
+
+rm(db, explan)
+```
+
+```{r}
+predictor_data <- explan_variables[,c(4:8)]
+
+cor_matrix <- cor(predictor_data, use = "pairwise.complete.obs")
+
+ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower",
+          lab = TRUE)
+```
+
+## Response Data
+```{r}
+fish_tidy <- read.csv("data/fish_tidy.csv")
+#make it wide
+wide_maxn_df <- pivot_wider(fish_tidy, 
+                             id_cols = c("Pin", "On.Adjacent", "Block"),
+                             names_from = Species, 
+                             values_from = MaxN) %>% 
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+# explan_fish <- left_join(wide_maxn_df, 
+#                            explan[, c("Pin", "del15N", "N_percent", "shore_dist_m", "dist_to_seep_m", "Low_Tide_Mean_Salinity")], 
+#                            by = "Pin")
+# 
+# predictors <- c("dist_to_seep_m", "shore_dist_m", "N_percent", "Low_Tide_Mean_Salinity")
+# explan_fish <- explan_fish %>%
+#   mutate(across(all_of(predictors),
+#                 ~ as.numeric(scale(.)),
+#                 .names = "{.col}_scale"))
+```
+
+
+```{r}
+# Pull just species columns (exclude metadata columns)
+meta_cols <- c("Pin", "On.Adjacent", "Block")
+
+fish_matrix <- wide_maxn_df %>%
+  select(-all_of(meta_cols)) %>%
+  as.matrix()
+
+# # Pull out scaled explanatory columns
+# explan_vars <- explan_fish %>%
+#   select(dist_to_seep_m_scale,
+#          shore_dist_m_scale,
+#          N_percent_scale,
+#          Low_Tide_Mean_Salinity_scale,
+#          Pin) %>% 
+#   mutate(Pin = as.factor(Pin))
+# 
+# # One df
+# gllvm_data <- explan_fish %>%
+#   select(Pin,
+#          dist_to_seep_m_scale,
+#          shore_dist_m_scale,
+#          N_percent_scale,
+#          Low_Tide_Mean_Salinity_scale)
+```
+
+### Explanatory matrix 
+```{r}
+explan_model <- explan_variables %>% 
+  left_join(wide_maxn_df[,c("Pin")]) %>% 
+  mutate(Pin = as.factor(Pin))
+```
+
+
+# GLLVM Models
+
+```{r}
+# Model without predictors:
+y <- fish_matrix
+no_predictors <- gllvm(y, family = "negative.binomial")
+summary(no_predictors)
+coef(no_predictors)
+plot(no_predictors)
+```
+
+## Including environmental variables
+```{r}
+X <- as.matrix(explan_model %>% select(-Pin, -lat, -lon, -scale_meanRugosity))
+# Model where environmental variables, that is, all variables in X are included:
+env <- gllvm(y, X, family = "negative.binomial")
+```
+
+One time this gave a lot of warnings, but now it is not. My understanding is the warnings it did give me don't matter
+
+Which fits, but because there isn't the 'formula' argument, it doesn't know how to interpret model
+```{r}
+# env_filt <- gllvm(
+#   y,
+#   X,
+#   family = "negative.binomial",
+#   num.lv = 0,
+#   formula = ~ scale_sqrt_dist_seep_m + scale_log_shore_dist_m + scale_N_percent + scale_log_ltm_salinity,
+#   seed = 1234
+# )
+# 
+# gllvm::coefplot(env_filt, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+```
+
+## Compare AIC values across different num.lv
+```{r}
+# criteria <- NULL
+# for(i in 1:5){
+#   fiti <- gllvm(y, X, family = "negative.binomial", num.lv = i, sd.errors = FALSE,
+#                 formula = ~ scale_sqrt_dist_seep_m + scale_log_shore_dist_m + scale_N_percent + scale_log_ltm_salinity, seed = 1234)
+#   criteria[i] <- summary(fiti)$AICc
+#   names(criteria)[i] = i
+# }
+# 
+# criteria
+```
+Based on these tools a model with NB distributed responses and 1 latent variable was chosen.
+```{r}
+# env_filt <- gllvm(
+#   y,
+#   X,
+#   family = "negative.binomial",
+#   num.lv = 1,
+#   formula = ~ scale_sqrt_dist_seep_m + scale_log_shore_dist_m + scale_N_percent + scale_log_ltm_salinity,
+#   seed = 1234
+# )
+# 
+# gllvm::coefplot(env_filt, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(1,1))
+```
+
+HOWEVER, this was just following the examples (which worked! Great), now we need to include random effects:
+
+## Include Random Effects
+
+No latent variables, but keep the random effect:
+```{r}
+# y <- fish_matrix # species abundance
+# X <- as.matrix(explan_model %>% select(!Pin, !lat, !lon, !scale_meanRugosity)) #keeping all the explanatory variables, but removing survey design
+# 
+# 
+# gllvm_nolv <- gllvm(
+#   y       = y,
+#   X       = X,
+#   formula = ~(1 | Pin), # random intercept for each Pin
+#   family  = "negative.binomial",
+#   num.lv  = 0, #we'll play with this if it fits
+#   data    = explan_model # for the formula to find Pin
+# )
+# 
+# summary(gllvm_nolv)
+# coef(gllvm_nolv)
+# plot(gllvm_nolv)
+```
+
+Now, trying with studyDesign argument
+
+```{r}
+# y <- fish_matrix # species abundance
+# X <- as.matrix(explan_model %>% select(-Pin, -lat, -lon, -scale_log_shore_dist_m)) #keeping all the explanatory variables, but removing survey design
+# study_design <- data.frame(Pin = explan_model$Pin)
+# env_studydesign <- gllvm(
+#   y = y,
+#   X = X,
+#   formula = ~ scale_sqrt_dist_seep_m + 
+#               scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity,
+#   family = "negative.binomial",
+#   studyDesign = study_design,
+#   row.eff = ~(1|Pin),
+#   seed = 1234
+# )
+```
+
+Not showing it is overfitted, but some of the effects are... weird
+```{r}
+# env_studydesign
+# 
+# #plot the effects:
+# gllvm::coefplot(env_studydesign, cex.ylab = 0.7)
+```
+
+need to reset the par
+```{r}
+# dev.off()
+```
+
+Variance Partitioning in this model:
+```{r}
+# VP1 <- VP(env_studydesign)
+# plot(VP1, args.legend = list(cex=0.7), col=hcl.colors(7, "Roma"))
+```
+
+The latent variables are doing ... nothing. So I'll remove them but keep the study design:
+
+```{r}
+# y <- fish_matrix # species abundance
+# X <- explan_model %>% 
+#   select(scale_sqrt_dist_seep_m, 
+#          #scale_log_shore_dist_m, 
+#          scale_N_percent, 
+#          scale_log_ltm_salinity,
+#          scale_meanRugosity) #keeping all the explanatory variables, but removing pin as survey design
+# study_design <- data.frame(Pin = explan_model$Pin)
+# env_studydesign_nolv <- gllvm(
+#   y = y,
+#   X = X,
+#   formula = ~ scale_sqrt_dist_seep_m + 
+#               scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity,
+#   family = "negative.binomial",
+#   studyDesign = study_design,
+#   row.eff = ~(1|Pin),
+#   num.lv = 0,
+#   seed = 1234
+# )
+```
+
+Is it better:
+```{r}
+# anova(env_studydesign, env_studydesign_nolv)
+```
+
+Coefficient plot:
+```{r}
+# gllvm::coefplot(env_studydesign_nolv, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(3,2))
+```
+
+```{r}
+# par(mfrow=c(1,1))
+# VP1 <- VP(env_studydesign_nolv)
+# plot(VP1, args.legend = list(cex=0.7), col=hcl.colors(5, "Roma"))
+```
+
+
+Kind of obvious, but these coefficients are WILD and have to be wrong??
+```{r}
+# #make into dataframe
+# model_coef<-coef(env_studydesign)
+# est_df<-data.frame(model_coef$Intercept)
+# est_df2<-data.frame(model_coef$Xcoef) 
+# est_df3<-merge(est_df, est_df2, by = 0)
+```
+
+Come here
+
+## Subset species model:
+### subset sp
+```{r}
+species_presence <- colSums(fish_matrix > 0)
+
+# Quick histogram
+hist(species_presence, main = "Species prevalence (non-zero counts)", xlab = "# of sites")
+```
+
+```{r}
+#species_present <- colSums(fish_matrix > 0) >= round(0.05 * nrow(fish_matrix)) #5% of samples aka 7 samples
+species_present <- colSums(fish_matrix > 0) >= 6
+fish_matrix_filtered <- fish_matrix[, species_present]
+y1 <- fish_matrix_filtered
+study_design <- data.frame(Pin = explan_model$Pin)
+X <- explan_model %>% 
+  select(scale_sqrt_dist_seep_m, 
+         #scale_log_shore_dist_m, 
+         scale_N_percent, 
+         scale_log_ltm_salinity,
+         scale_meanRugosity) #keeping all the explanatory variables, but removing pin as survey design
+```
+
+### Model
+model, but how many latent variables
+```{r}
+criteria <- numeric(6)  # to store AICc values for num.lv = 0 to 5
+
+for (i in 0:5) {
+  cat("Fitting model with", i, "latent variables...\n")
+  #Fit model
+  fit_i <- gllvm(
+    y = y1,
+    X = X,
+    formula = ~ scale_sqrt_dist_seep_m + 
+                scale_N_percent + scale_log_ltm_salinity + 
+                scale_meanRugosity,
+    family = "negative.binomial",
+    studyDesign = study_design,
+    row.eff = ~(1 | Pin),
+    num.lv = i,
+    seed = 1234
+  )
+  
+  # Take the AICc of that model
+  criteria[i + 1] <- summary(fit_i)$AICc
+  names(criteria)[i + 1] <- paste0("num.lv = ", i)
+}
+
+criteria
+names(criteria)[which.min(criteria)]
+```
+Suggests the best model has 0 latent variables
+
+```{r}
+filtered_env_studydesign <- gllvm(
+  y = y1,
+  X = X,
+  formula = ~ scale_sqrt_dist_seep_m + 
+              scale_N_percent + scale_log_ltm_salinity + scale_meanRugosity,
+  family = "negative.binomial",
+  studyDesign = study_design,
+  row.eff = ~(1|Pin),
+  num.lv = 0,
+  seed = 1234
+)
+```
+
+```{r}
+summary <- summary(filtered_env_studydesign)
+coef(filtered_env_studydesign)
+plot(filtered_env_studydesign)
+
+coefs_model <- as.data.frame(summary$Coef.tableX) %>%
+  tibble::rownames_to_column(var = "VariableSpecies") %>%
+  separate(VariableSpecies, into = c("Variable", "Species"), sep = ":", extra = "merge")
+
+sig_coefs_model <- coefs_model %>% 
+  filter(`Pr(>|z|)`< 0.05)
+```
+
+#### Plots:
+Coeffiient plot: first check how big the coefficients are
+```{r}
+#make into dataframe
+model_coef<-coef(filtered_env_studydesign)
+est_df<-data.frame(model_coef$Intercept)
+est_df2<-data.frame(model_coef$Xcoef) #this one is the best one
+est_df3<-merge(est_df, est_df2, by = 0)
+```
+
+```{r}
+gllvm::coefplot(filtered_env_studydesign, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(2,2), xlim.list= list(c(-2.5,2.5), c(-2.5,2.5), c(-2.5,2.5),c(-2.5,2.5)))
+
+# gllvm::coefplot(filtered_env_studydesign, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(2,2), xlim.list= list(c(-2.5,2.5), c(-2.5,2.5), c(-2.5,2.5),c(-2.5,2.5)), show = "all")
+```
+Variance Partitioning Plot:
+```{r}
+par(mfrow=c(1,1))
+VP1 <- VP(filtered_env_studydesign)
+plot(VP1, args.legend = list(cex=0.7), col=hcl.colors(5, "Roma"))
+```
+
+#### dropping N_percent
+```{r}
+X_reduced <- X %>%
+  select(-scale_N_percent)
+```
+reduce model
+```{r}
+reduced_model <- gllvm(
+  y = y1,
+  X = X_reduced,
+  formula = ~ scale_sqrt_dist_seep_m + scale_log_ltm_salinity + scale_meanRugosity,
+  family = "negative.binomial",
+  studyDesign = study_design,
+  row.eff = ~(1 | Pin),
+  num.lv = 0,
+  seed = 1234
+)
+```
+compare AIC
+```{r}
+AIC(filtered_env_studydesign)
+AIC(reduced_model)
+```
+It is better
+Check num latent variables
+```{r}
+criteria_reduced <- numeric(6)
+
+for (i in 0:5) {
+  cat("Fitting model with", i, "latent variables (reduced predictors)...\n")
+  
+  fit_i <- gllvm(
+    y = y1,
+    X = X_reduced,   # your reduced set of predictors
+    formula = ~ scale_sqrt_dist_seep_m + scale_log_ltm_salinity + scale_meanRugosity,  # adjusted formula
+    family = "negative.binomial",
+    studyDesign = study_design,
+    row.eff = ~(1 | Pin),
+    num.lv = i,
+    seed = 1234
+  )
+  
+  criteria_reduced[i + 1] <- summary(fit_i)$AICc
+  names(criteria_reduced)[i + 1] <- paste0("num.lv = ", i)
+}
+
+criteria_reduced
+names(criteria_reduced)[which.min(criteria_reduced)]
+```
+still 0 latent variables
+
+```{r}
+gllvm::coefplot(reduced_model, cex.ylab = 0.7, mar = c(4, 9, 2, 1), mfrow=c(2,2), xlim.list= list(c(-2.5,2.5), c(-2.5,2.5), c(-2.5,2.5),c(-2.5,2.5)))
+```
+
+```{r}
+par(mfrow=c(1,1))
+VP1 <- VP(reduced_model)
+plot(VP1, args.legend = list(cex=0.7), col=hcl.colors(5, "Roma"))
+```
+
+
+
+```{r}
+summary <- summary(reduced_model)
+coef(reduced_model)
+plot(reduced_model)
+
+coefs_model <- as.data.frame(summary$Coef.tableX) %>%
+  tibble::rownames_to_column(var = "VariableSpecies") %>%
+  separate(VariableSpecies, into = c("Variable", "Species"), sep = ":", extra = "merge")
+
+sig_coefs_model <- coefs_model %>% 
+  filter(`Pr(>|z|)`< 0.05)
+```
+
+
+
+# Spatial autocorrelation with lat / lon
+For my next trick, I'd like to levee this:
+"If one would like to set eg. spatial correlation structure for the site level random effects, it could be defined for instance by row.eff = ~corExp(1|site) and spatial coordinates given to dist as a matrix."
+
+And then removing the distance to seep and distance to shore variables, only looking at salinity and N_percent
+
+```{r}
+coords <- explan_model %>%
+  select(Pin, lat, lon) 
+# Convert to a matrix of Euclidean distances (or haversine if large-scale)
+spatial_dist <- as.matrix(dist(cbind(coords$lat, coords$lon)))
+```
+
+but, i don't think ^ works because of repeated measures, so
+```{r}
+coords <- explan_model %>%
+  select(Pin, lat, lon) %>%
+  distinct(Pin, .keep_all = TRUE) %>%
+  arrange(Pin)  # order needs to be the same as Pin because Pin will be removed for distance
+
+# Step 2: distance matrix for site-level spatial random effect
+spatial_dist <- as.matrix(dist(cbind(coords$lat, coords$lon)))
+```
+
+
+```{r}
+y <- fish_matrix # species abundance
+X <- explan_model %>% 
+  select(scale_sqrt_dist_seep_m, 
+         scale_log_shore_dist_m, 
+         scale_N_percent, 
+         scale_log_ltm_salinity,
+         meanRugosity) #keeping all the explanatory variables, but removing pin as survey design
+study_design <- data.frame(Pin = factor(explan_model$Pin, levels = coords$Pin)) #added in levels to make sure it matches coords
+
+# #Spatial GLM model
+# gllvm_spatial <- gllvm(
+#   y = y,
+#   X = X,
+#   formula = ~ scale_sqrt_dist_seep_m + scale_log_shore_dist_m +
+#               scale_N_percent + scale_log_ltm_salinity + meanRugosity,
+#   family = "negative.binomial",
+#   studyDesign = study_design,
+#   row.eff = ~ corExp(1 | Pin),
+#   dist = spatial_dist,
+#   seed = 1234,
+#   num.lv = 0 #no need for latent variables after checking VP
+# )
+
+#Spatial GLM model 2
+gllvm_spatial <- gllvm(
+  y = y,
+  X = X,
+  formula = ~ scale_N_percent + scale_log_ltm_salinity + meanRugosity,
+  family = "negative.binomial",
+  studyDesign = study_design,
+  row.eff = ~ corExp(1 | Pin),
+  dist = spatial_dist,
+  seed = 1234,
+  num.lv = 0 #no need for latent variables after checking VP
+)
+```
+
+Warning message:
+In doTryCatch(return(expr), name, parentenv, handler) :
+  Determinant of the variance-covariance matix is zero. Please double check your model for e.g. overfitting or lack of convergence. 
+  
+```{r}
+gllvm_spatial
+
+# sds for random row effects and Correlation for consecutive years
+gllvm_spatial$params$sigma
+
+#coefficients
+gllvm::coefplot(gllvm_spatial, cex.ylab = 0.7, mar = c(4, 9, 2, 1), xlim.list= list(NULL, NULL, c(-100,100)))
+```
+
+Variance Partitioning in this model:
+```{r}
+par(mfrow=c(1,1))
+VPspatial <- VP(gllvm_spatial)
+plot(VPspatial, args.legend = list(cex=0.7), col=hcl.colors(5, "Roma"))
+```
+
+
